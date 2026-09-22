@@ -3,10 +3,9 @@
 #
 #   pi-bot <name> [pi args...]
 #
-# Each bot is a directory under $PI_BOTS_DIR (default ~/dev/pi-bots) that
-# doubles as a pi package: its skills load on top of the global setup, its
-# APPEND_SYSTEM.md is appended to the system prompt, and its sessions live in
-# ~/.pi/agent/sessions/<name>.
+# Each bot lives in <repo>/bots/<name> and doubles as a pi package: its skills
+# load on top of the base setup, its APPEND_SYSTEM.md is appended to the system
+# prompt, and its sessions live in ~/.pi/agent/sessions/<name>.
 set -eu
 
 bots_dir="${PI_BOTS_DIR:-$HOME/dev/pi-bots}"
@@ -18,7 +17,7 @@ fi
 
 name="$1"
 shift
-bot_dir="$bots_dir/$name"
+bot_dir="$bots_dir/bots/$name"
 
 if [ ! -d "$bot_dir" ]; then
     echo "pi-bot: unknown bot '$name' (no $bot_dir)" >&2

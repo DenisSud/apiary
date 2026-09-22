@@ -3,7 +3,7 @@ function pi --wraps pi --description 'pi with bot profiles (pi --bot <name>)'
     set -l idx (contains -i -- --bot $argv)
     if test -n "$idx"
         set -l name $argv[(math $idx + 1)]
-        if test -d "$bots_dir/$name"
+        if test -d "$bots_dir/bots/$name"
             set -e argv[(math $idx + 1)]
             set -e argv[$idx]
             command pi-bot $name $argv
