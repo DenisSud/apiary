@@ -16,20 +16,18 @@ extensions and shareable settings. One source of truth, no scattered packages.
 │   ├── web-search/       # web_search / web_fetch (local SearXNG + trafilatura)
 │   └── ptc/              # programmatic tool calling (JS runner + built-ins)
 └── skills/
-    ├── codebase-design/                 # deep-module design vocabulary
     ├── cron-jobs/                       # systemd-timer cron jobs
-    ├── devenv-nix/                      # devenv.nix standards
     ├── grilling/                        # stress-test plans and decisions
     ├── handoff/                         # handoff between sessions
     ├── homelab/                         # find infra facts, act safely
-    ├── improve-codebase-architecture/
     ├── memory-review/                   # periodic note consolidation
     ├── research/                        # evidence-gated graph research + HTML report
-    ├── resolving-merge-conflicts/
     ├── subagents/                       # delegate to fresh-context child agents
-    ├── tdd/                             # test-driven development
     └── writing-great-skills/            # how to write skills
 ```
+
+Coding skills live in the `pi-bots` monorepo, not here: they load only in
+the dev bot (`pi --bot dev`), so the general agent stays coding-free.
 
 `web-search` expects a SearXNG instance (`SEARXNG_BASE_URL`, default
 `http://127.0.0.1:8888`) and the `trafilatura` + `pdftotext`/`pandoc` binaries

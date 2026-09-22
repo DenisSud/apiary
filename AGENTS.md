@@ -30,4 +30,5 @@ Tool `description`, `promptSnippet`, and `promptGuidelines` are rendered verbati
 
 ## Related but separate
 
+- `~/dev/pi-bots` — specialized agents (bot packages + the `pi --bot` wrapper) layered on this package. Coding skills live there under `dev/`.
 - `~/.pi/agent/memory/` — personal memory notes, a separate private git repo, synced across devices. When you change behavior agents rely on (e.g. extension contracts), update the relevant notes there and push both repos.
