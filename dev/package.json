@@ -1,0 +1,10 @@
+{
+  "name": "pi-bot-dev",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dev bot: coding skills and instructions layered on the shared pi-setup",
+  "keywords": ["pi-package"],
+  "pi": {
+    "skills": ["./skills"]
+  }
+}

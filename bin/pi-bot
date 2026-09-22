@@ -1,0 +1,34 @@
+#!/usr/bin/env sh
+# pi-bot — run pi as one of the bots in this repo.
+#
+#   pi-bot <name> [pi args...]
+#
+# Each bot is a directory under $PI_BOTS_DIR (default ~/dev/pi-bots) that
+# doubles as a pi package: its skills load on top of the global setup, its
+# APPEND_SYSTEM.md is appended to the system prompt, and its sessions live in
+# ~/.pi/agent/sessions/<name>.
+set -eu
+
+bots_dir="${PI_BOTS_DIR:-$HOME/dev/pi-bots}"
+
+if [ "$#" -lt 1 ]; then
+    echo "usage: pi-bot <name> [pi args...]" >&2
+    exit 2
+fi
+
+name="$1"
+shift
+bot_dir="$bots_dir/$name"
+
+if [ ! -d "$bot_dir" ]; then
+    echo "pi-bot: unknown bot '$name' (no $bot_dir)" >&2
+    exit 1
+fi
+
+set -- -e "$bot_dir" --session-dir "$HOME/.pi/agent/sessions/$name" "$@"
+
+if [ -f "$bot_dir/APPEND_SYSTEM.md" ]; then
+    set -- --append-system-prompt "$bot_dir/APPEND_SYSTEM.md" "$@"
+fi
+
+exec pi "$@"
