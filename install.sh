@@ -28,7 +28,7 @@ fi
 
 jq -s '
   .[0] as $repo | .[1] as $user |
-  ($user * $repo) as $merged |  # user keys win
+  ($repo * $user) as $merged |  # jq * gives the right operand precedence: user keys win
   $merged | .packages = (($user.packages // []) + (($repo.packages // []) - ($user.packages // [])))
 ' "$repo_dir/settings.json" "$target" > "$target.tmp"
 

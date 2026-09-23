@@ -15,7 +15,7 @@ load.
 ├── settings.json         # shareable defaults (model, provider, thinking, theme)
 ├── install.sh            # settings merge, package install, bot tooling, ~/Bots
 ├── global/AGENTS.md      # the base rules — injected into every agent by house-rules
-├── extensions/           # house-rules, security, ptc, sysinfo, web-search
+├── extensions/           # house-rules, security, ptc, sysinfo, web-search, memory
 ├── skills/               # skill-authoring, handoff, grilling
 ├── registry/             # promotion policy — deferred, see registry/README.md
 ├── bin/pi-bot            # run a bot / scaffold one / list them

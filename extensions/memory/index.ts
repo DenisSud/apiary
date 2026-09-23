@@ -28,7 +28,8 @@
  *   archive/      — obsolete material, not loaded
  *
  * No custom tools. No embeddings. No RAG. Just files + git.
- * See SPEC.md in the package root for the full design.
+ * SPEC.md (this directory) is the original design record — it still lists a
+ * `skills/` category, which the implementation deliberately dropped.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

@@ -1,5 +1,10 @@
 # Agent Knowledge Memory System (AKMS) v0.1
 
+> Vendored 2026-09-23 from the `su-memory` package (archived) as the original
+design record. The implementation deviates in one place: there is no `skills/`
+category — reusable procedures live in pi's skill system, not in memory. See
+`index.ts` for what the code actually does.
+
 ## 1. Core Principle
 
 Memory exists to minimize future reasoning cost.

@@ -2,11 +2,18 @@
   "name": "pi-bots",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Base of Denis's pi setup: the extensions, skills, rules and tooling every agent and bot loads",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./extensions"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
