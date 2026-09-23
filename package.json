@@ -2,7 +2,7 @@
   "name": "pi-bots",
   "version": "0.1.0",
   "private": true,
-  "description": "Denis's pi setup as one monorepo: base skills/extensions/settings plus specialized bot packages",
+  "description": "Base of Denis's pi setup: the extensions, skills, rules and tooling every agent and bot loads",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],

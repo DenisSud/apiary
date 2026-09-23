@@ -1,33 +1,52 @@
 #!/usr/bin/env sh
-# pi-bot — run pi as one of the bots in this repo.
+# pi-bot — run pi as one of Denis's bots.
 #
-#   pi-bot <name> [pi args...]
+#   pi-bot <name> [pi args...]   run a bot
+#   pi-bot new <name>            scaffold a new bot
+#   pi-bot list                  list bots
 #
-# Each bot lives in <repo>/bots/<name> and doubles as a pi package: its skills
-# load on top of the base setup, its APPEND_SYSTEM.md is appended to the system
-# prompt, and its sessions live in ~/.pi/agent/sessions/<name>.
+# A bot is a complete pi agent dir at $PI_BOTS_HOME/<name> (default ~/Bots):
+# its own APPEND_SYSTEM.md persona, skills, extensions, settings, sessions and
+# memory clone. The base package (pi-bots) arrives through the bot's
+# settings.json; the wrapper only points pi at the bot dir.
 set -eu
 
-bots_dir="${PI_BOTS_DIR:-$HOME/dev/pi-bots}"
+bots_home="${PI_BOTS_HOME:-$HOME/Bots}"
+self="$(readlink -f "$0")"
 
 if [ "$#" -lt 1 ]; then
-    echo "usage: pi-bot <name> [pi args...]" >&2
+    echo "usage: pi-bot <name> [pi args...] | pi-bot new <name> | pi-bot list" >&2
     exit 2
 fi
 
+case "$1" in
+    new)
+        shift
+        exec "$(dirname "$self")/pi-bot-new" "$@"
+        ;;
+    list)
+        ls -1 "$bots_home" 2>/dev/null | grep -vx docs || true
+        exit 0
+        ;;
+esac
+
 name="$1"
 shift
-bot_dir="$bots_dir/bots/$name"
+bot_dir="$bots_home/$name"
 
 if [ ! -d "$bot_dir" ]; then
     echo "pi-bot: unknown bot '$name' (no $bot_dir)" >&2
     exit 1
 fi
 
-set -- -e "$bot_dir" --session-dir "$HOME/.pi/agent/sessions/$name" "$@"
+PI_CODING_AGENT_DIR="$bot_dir"
+export PI_CODING_AGENT_DIR
 
-if [ -f "$bot_dir/APPEND_SYSTEM.md" ]; then
-    set -- --append-system-prompt "$bot_dir/APPEND_SYSTEM.md" "$@"
+# Each bot works on its own clone of the memory repo; fall back to the shared
+# one (~/.pi/agent/memory) for a bot scaffolded without a clone.
+if [ -d "$bot_dir/memory" ]; then
+    PI_MEMORY_DIR="$bot_dir/memory"
+    export PI_MEMORY_DIR
 fi
 
 exec pi "$@"

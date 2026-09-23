@@ -60,11 +60,10 @@ Same trust level as the bash tool.
    a thin re-implementation registered the same way (`builtin.ts`), never a
    special case.
 
-7. **pi-setup extensions:** `web-search` registers (fan-out search is the
+7. **Base extensions:** `web-search` registers (fan-out search is the
    benchmark-proven fit: filter/rank results in code). `sysinfo` does not
-   (already in the system prompt, no fan-out value). `consult` does not
-   (expensive, judgment-heavy — adaptive evaluation stays direct per both
-   vendors' guidance).
+   (already in the system prompt, no fan-out value). Judgment-heavy work stays
+   direct — adaptive evaluation beats a scripted loop there.
 
 8. **Error handling.** Tool `run` throwing = a rejected promise inside the
    program (model sees it in the error output and can handle/retry in code).
@@ -112,4 +111,4 @@ Same trust level as the bash tool.
 - `index.ts` — `ptc` tool (registers in `session_start`), child-process runner, output capping.
 - `registry.ts` — `registerPtcTool` / `listPtcTools` / `getPtcTool`. The only file other extensions import.
 - `builtin.ts` — script-friendly `read` / `grep` / `find` / `sh` implementations + signatures.
-- `test/harness.mjs`, `test/run.sh` — same harness pattern as consult (stubbed ExtensionAPI, no network).
+- `test/harness.mjs`, `test/run.sh` — stubbed ExtensionAPI, no network.

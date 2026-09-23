@@ -10,7 +10,14 @@ Prefer the smallest solution that holds: question whether something needs to exi
 - Ship the lazy version, then note the tradeoff in one line: "skipped X, add when Y."
 - Full rigor stays for: validation at trust boundaries, security, error handling that prevents data loss, and anything explicitly requested.
 
-Code-specific rules (design vocabulary, TDD, test-before-ship review) live in the dev bot: `pi --bot dev`.
+Code-specific rules (design vocabulary, TDD, test-before-ship review) live in the dev bot: `pi-bot dev`.
+
+## Where things live
+
+- Base package (these rules, base extensions and skills): `~/dev/pi-bots`.
+- Bots: `~/Bots/<name>` — each is a complete pi agent dir and its own git repo; `pi-bot <name>` runs one, `pi-bot new <name>` scaffolds one.
+- System docs and decisions: `~/Bots/docs`.
+- Memory: the shared clone is `~/.pi/agent/memory`; a bot works on its own clone at `<bot dir>/memory`.
 
 ## Secrets
 
