@@ -245,6 +245,7 @@ export async function createEvent(input: EventInput): Promise<CalendarEvent> {
 		location: input.location,
 		description: input.description,
 		rrule: input.rrule,
+		reminders: input.reminders,
 	});
 	const url = eventUrl(config, uid);
 	const response = await request("PUT", url, {
@@ -267,6 +268,8 @@ export async function updateEvent(uid: string, changes: Partial<EventInput>): Pr
 		location: changes.location ?? current.event.location,
 		description: changes.description ?? current.event.description,
 		rrule: changes.rrule ?? current.event.rrule,
+		// Undefined keeps the alarms already on the event; [] clears them.
+		reminders: changes.reminders ?? current.event.reminders,
 	};
 	let start = parseInstant(merged.start, config.timezone);
 	let end = merged.end ? parseInstant(merged.end, config.timezone) : undefined;
@@ -284,6 +287,7 @@ export async function updateEvent(uid: string, changes: Partial<EventInput>): Pr
 		location: merged.location,
 		description: merged.description,
 		rrule: merged.rrule,
+		reminders: merged.reminders,
 	});
 	const response = await request("PUT", current.url, {
 		body: ics,

@@ -6,8 +6,10 @@
  * (all-day events as dates), so no VTIMEZONE is needed and every client shows
  * them correctly; input and output are rendered in the configured zone.
  *
- * Out of scope by design: reminders (VALARM), attendees, and editing single
- * instances of a recurring series — an update rewrites the whole series.
+ * Out of scope by design: attendees, and editing single instances of a
+ * recurring series — an update rewrites the whole series. Reminders are
+ * supported as DISPLAY alarms (VALARM) that the client fires; the server only
+ * stores them.
  */
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -41,6 +43,9 @@ function when(event: CalendarEvent, timezone: string): string {
 function describe(event: CalendarEvent, timezone: string, verbose: boolean): string {
 	const lines = [`- ${when(event, timezone)} — ${event.summary}`];
 	if (event.location) lines.push(`  at ${event.location}`);
+	if (event.reminders?.length) {
+		lines.push(`  reminder(s): ${event.reminders.map((minutes) => (minutes < 0 ? `${-minutes} min after start` : `${minutes} min before`)).join(", ")}`);
+	}
 	if (event.recurrenceId) lines.push(`  (instance of a recurring event, recurrence-id ${event.recurrenceId})`);
 	else if (event.rrule) lines.push(`  repeats: ${event.rrule}`);
 	if (verbose && event.description) lines.push(`  ${event.description.replace(/\n/g, "\n  ")}`);
@@ -94,6 +99,10 @@ const START = Type.String({
 });
 const END = Type.Optional(Type.String({ description: "Event end, same formats as start. For all-day events, the exclusive end date" }));
 const UID = Type.String({ description: "Event uid (from calendar_list_events / calendar_get_event)" });
+const REMINDERS = Type.Array(Type.Integer({ minimum: -10_080, maximum: 40_320 }), {
+	description:
+		"Reminders as DISPLAY alarms, in minutes before the start: [10, 1440] = 10 minutes and 1 day before (negative = after the start). The calendar client (GNOME Calendar, DAVx⁵/phone) shows the notification — this server only stores the alarm.",
+});
 
 export default function calendarExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
@@ -148,7 +157,7 @@ export default function calendarExtension(pi: ExtensionAPI): void {
 		name: "calendar_create_event",
 		label: "Calendar Create",
 		description:
-			"Create an event in Denis's personal calendar. Times are stored in UTC; pass local Moscow times or RFC3339 with an offset. All-day events use plain dates (end date is exclusive). Recurrence is supported by passing an RRULE (e.g. FREQ=WEEKLY;BYDAY=MO). No reminders and no attendees — those fields are not part of this calendar. Returns the new event's uid.",
+			"Create an event in Denis's personal calendar. Times are stored in UTC; pass local Moscow times or RFC3339 with an offset. All-day events use plain dates (end date is exclusive). Recurrence is supported by passing an RRULE (e.g. FREQ=WEEKLY;BYDAY=MO), and reminders by passing how many minutes before the start to notify (the phone/laptop calendar app fires them). No attendees — that field is not part of this calendar. Returns the new event's uid.",
 		parameters: Type.Object({
 			summary: Type.String({ description: "Event title" }),
 			start: START,
@@ -157,6 +166,7 @@ export default function calendarExtension(pi: ExtensionAPI): void {
 			location: Type.Optional(Type.String({ description: "Where it happens" })),
 			description: Type.Optional(Type.String({ description: "Free-form notes (plain text)" })),
 			rrule: Type.Optional(Type.String({ description: 'Recurrence rule, e.g. "FREQ=WEEKLY;BYDAY=TU" or "FREQ=DAILY;COUNT=5"' })),
+			reminders: Type.Optional(REMINDERS),
 		}),
 		...renderer("Calendar Create", (details) => String(details.summary ?? "event")),
 		async execute(_toolCallId, params) {
@@ -169,6 +179,7 @@ export default function calendarExtension(pi: ExtensionAPI): void {
 				location: params.location,
 				description: params.description,
 				rrule: params.rrule,
+				reminders: params.reminders,
 			});
 			auditLog(config).write({ op: "create_event", uid: event.uid, summary: event.summary, start: event.start, end: event.end });
 			return {
@@ -182,7 +193,7 @@ export default function calendarExtension(pi: ExtensionAPI): void {
 		name: "calendar_update_event",
 		label: "Calendar Update",
 		description:
-			"Change an existing event: fields you pass replace the stored ones, the rest stay. Read the event first (calendar_get_event) so the etag is current — the update is rejected if someone else changed it in the meantime. Recurring series are updated as a whole (single instances are not editable).",
+			"Change an existing event: fields you pass replace the stored ones, the rest stay. Read the event first (calendar_get_event) so the etag is current — the update is rejected if someone else changed it in the meantime. Recurring series are updated as a whole (single instances are not editable); reminders carry over unless you pass new ones (`reminders: []` removes them).",
 		parameters: Type.Object({
 			uid: UID,
 			summary: Type.Optional(Type.String({ description: "New title" })),
@@ -191,6 +202,7 @@ export default function calendarExtension(pi: ExtensionAPI): void {
 			location: Type.Optional(Type.String({ description: "New location" })),
 			description: Type.Optional(Type.String({ description: "New notes" })),
 			rrule: Type.Optional(Type.String({ description: "New recurrence rule (empty string clears it)" })),
+			reminders: Type.Optional(REMINDERS),
 		}),
 		...renderer("Calendar Update", (details) => String(details.summary ?? details.uid ?? "event")),
 		async execute(_toolCallId, params) {
@@ -202,6 +214,8 @@ export default function calendarExtension(pi: ExtensionAPI): void {
 				location: params.location,
 				description: params.description,
 				rrule: params.rrule,
+				// Omitted = keep the reminders already on the event; [] = remove them.
+				reminders: params.reminders,
 			});
 			auditLog(config).write({ op: "update_event", uid: event.uid, summary: event.summary, start: event.start, end: event.end });
 			return {

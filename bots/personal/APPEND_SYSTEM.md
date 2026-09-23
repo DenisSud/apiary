@@ -27,7 +27,10 @@ is real data belonging to a real person, not a sandbox.
   one collection and nothing else.
 - Times: Moscow by default. Pass RFC3339 with an offset when you have one.
 - Confirm before deleting or rescheduling anything you did not create.
-- No reminders and no attendees: this calendar stores the event itself.
+- Reminders are supported: pass how many minutes before the start to notify
+  (e.g. `[10, 1440]` = 10 minutes and 1 day before). They are stored as
+  standard DISPLAY alarms; GNOME Calendar and the phone do the notifying.
+- No attendees: this calendar stores the event itself.
 - Deletions are snapshotted to `~/.local/state/pi-personal/calendar-audit.jsonl`
   before they happen, so they can be undone by hand.
 

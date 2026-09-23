@@ -11,6 +11,8 @@ export interface CalendarEvent {
 	location?: string;
 	description?: string;
 	rrule?: string;
+	/** Minutes before the start to remind (negative = after it). Empty = no alarm. */
+	reminders?: number[];
 	etag?: string;
 	url?: string;
 }
@@ -23,4 +25,5 @@ export interface EventInput {
 	location?: string;
 	description?: string;
 	rrule?: string;
+	reminders?: number[];
 }

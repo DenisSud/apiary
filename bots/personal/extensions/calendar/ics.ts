@@ -163,37 +163,98 @@ export interface IcsEventSource {
 	url?: string;
 }
 
-/** All VEVENTs in a VCALENDAR (an expanded REPORT returns one per instance). */
+type Field = { params: Record<string, string>; value: string };
+
+/**
+ * All VEVENTs in a VCALENDAR (an expanded REPORT returns one per instance).
+ * VALARM sub-components are collected per event and folded into `reminders`.
+ */
 export function parseEvents(source: IcsEventSource, timeZone: string): CalendarEvent[] {
 	const events: CalendarEvent[] = [];
-	let current: Map<string, { params: Record<string, string>; value: string }> | undefined;
+	let current: Map<string, Field> | undefined;
+	let alarm: Map<string, Field> | undefined;
+	let alarms: Map<string, Field>[] = [];
 
 	for (const line of unfoldLines(source.ics)) {
 		if (line === "BEGIN:VEVENT") {
 			current = new Map();
+			alarms = [];
 			continue;
 		}
 		if (line === "END:VEVENT") {
 			if (current) {
-				const event = toEvent(current, source, timeZone);
+				const event = toEvent(current, alarms, source, timeZone);
 				if (event) events.push(event);
 			}
 			current = undefined;
 			continue;
 		}
+		if (line === "BEGIN:VALARM") {
+			alarm = new Map();
+			continue;
+		}
+		if (line === "END:VALARM") {
+			if (alarm) alarms.push(alarm);
+			alarm = undefined;
+			continue;
+		}
 		if (!current) continue;
 		const { name, params, value } = splitProperty(line);
-		current.set(name, { params, value });
+		if (alarm) alarm.set(name, { params, value });
+		else current.set(name, { params, value });
 	}
 	return events;
 }
 
+/** ISO 8601 duration → minutes. `-PT10M` → 10, `P1DT2H` → 1560. */
+function parseDurationMinutes(value: string): number | undefined {
+	const match = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(value.trim());
+	if (!match) return undefined;
+	const [, sign, weeks, days, hours, minutes, seconds] = match;
+	const total =
+		Number(weeks ?? 0) * 7 * 1440 +
+		Number(days ?? 0) * 1440 +
+		Number(hours ?? 0) * 60 +
+		Number(minutes ?? 0) +
+		Number(seconds ?? 0) / 60;
+	const offset = sign === "-" ? -total : total; // no sign means a duration after the start
+	return -offset; // the tools count minutes *before* the start
+}
+
+/**
+ * One VALARM → minutes before the start, or undefined for alarms this model
+ * cannot express (absolute times, non-DISPLAY actions).
+ */
+function alarmMinutes(fields: Map<string, Field>, eventMinutes: number | undefined): number | undefined {
+	const trigger = fields.get("TRIGGER");
+	if (!trigger) return undefined;
+	const action = fields.get("ACTION")?.value.toUpperCase();
+	if (action && action !== "DISPLAY") return undefined;
+	if ((trigger.params.VALUE ?? "").toUpperCase() === "DATE-TIME") return undefined;
+	const minutes = parseDurationMinutes(trigger.value);
+	if (minutes === undefined) return undefined;
+	if ((trigger.params.RELATED ?? "START").toUpperCase() !== "END") return minutes;
+	// Relative to the end: "30 min before the end" of a two-hour event is 90
+	// minutes before the start. An instantaneous event has end == start.
+	return eventMinutes === undefined ? minutes : eventMinutes - minutes;
+}
+
+/** Event length in minutes; undefined for a timed event without an end. */
+function eventMinutes(start: string, end: string | undefined, allDay: boolean): number | undefined {
+	if (!end) return allDay ? 1440 : undefined;
+	const from = allDay ? Date.parse(`${start}T00:00:00Z`) : Date.parse(start);
+	const to = allDay ? Date.parse(`${end}T00:00:00Z`) : Date.parse(end);
+	if (Number.isNaN(from) || Number.isNaN(to)) return undefined;
+	return Math.round((to - from) / 60_000);
+}
+
 function toEvent(
-	fields: Map<string, { params: Record<string, string>; value: string }>,
+	fields: Map<string, Field>,
+	alarms: Map<string, Field>[],
 	source: IcsEventSource,
 	timeZone: string,
 ): CalendarEvent | undefined {
-	const raw = (name: string): { params: Record<string, string>; value: string } | undefined => fields.get(name);
+	const raw = (name: string): Field | undefined => fields.get(name);
 	const text = (name: string): string | undefined => {
 		const field = raw(name);
 		return field ? unescapeText(field.value) : undefined;
@@ -206,6 +267,12 @@ function toEvent(
 	const end = parseIcsDateSafe(raw("DTEND")?.value, raw("DTEND")?.params ?? {}, timeZone);
 	const recurrenceId = parseIcsDateSafe(raw("RECURRENCE-ID")?.value, raw("RECURRENCE-ID")?.params ?? {}, timeZone);
 
+	const duration = eventMinutes(start.iso, end?.iso, start.allDay);
+	const reminders = alarms
+		.map((alarm) => alarmMinutes(alarm, duration))
+		.filter((minutes): minutes is number => minutes !== undefined)
+		.sort((a, b) => a - b);
+
 	return {
 		uid,
 		recurrenceId: recurrenceId?.iso,
@@ -216,6 +283,7 @@ function toEvent(
 		location: text("LOCATION"),
 		description: text("DESCRIPTION"),
 		rrule: raw("RRULE")?.value,
+		reminders: reminders.length ? reminders : undefined,
 		etag: source.etag,
 		url: source.url,
 	};
@@ -244,6 +312,22 @@ export function foldLine(line: string): string[] {
 	return out;
 }
 
+/** Minutes before the start → the trigger value clients expect (`-PT10M`). */
+export function formatTrigger(minutes: number): string {
+	const rounded = Math.round(minutes);
+	const sign = rounded >= 0 ? "-" : "";
+	let rest = Math.abs(rounded);
+	const days = Math.floor(rest / 1440);
+	rest %= 1440;
+	const hours = Math.floor(rest / 60);
+	const mins = rest % 60;
+	let duration = "P";
+	if (days) duration += `${days}D`;
+	if (hours || mins) duration += `T${hours ? `${hours}H` : ""}${mins ? `${mins}M` : ""}`;
+	if (duration === "P") duration = "PT0M";
+	return `${sign}${duration}`;
+}
+
 export interface BuildEventInput {
 	uid: string;
 	summary: string;
@@ -252,6 +336,8 @@ export interface BuildEventInput {
 	location?: string;
 	description?: string;
 	rrule?: string;
+	/** Minutes before the start to remind; DISPLAY alarms, fired by the client. */
+	reminders?: number[];
 	/** Creation timestamp; injected for deterministic tests. */
 	now?: Date;
 }
@@ -275,6 +361,15 @@ export function buildEvent(input: BuildEventInput): string {
 	if (input.location) lines.push(`LOCATION:${escapeText(input.location)}`);
 	if (input.description) lines.push(`DESCRIPTION:${escapeText(input.description)}`);
 	if (input.rrule) lines.push(`RRULE:${input.rrule}`);
+	for (const minutes of input.reminders ?? []) {
+		lines.push(
+			"BEGIN:VALARM",
+			"ACTION:DISPLAY",
+			`DESCRIPTION:${escapeText(input.summary)}`,
+			`TRIGGER:${formatTrigger(minutes)}`,
+			"END:VALARM",
+		);
+	}
 	lines.push("END:VEVENT", "END:VCALENDAR");
 	return `${lines.flatMap(foldLine).join("\r\n")}\r\n`;
 }

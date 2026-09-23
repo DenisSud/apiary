@@ -21,7 +21,7 @@ Everything here is real data belonging to a real person — see
 | `email_get_attachment` | Downloads one part to `~/Downloads/email-attachments/` |
 | `email_list_drafts` / `email_create_draft` / `email_update_draft` / `email_delete_draft` | The drafts lifecycle |
 | `calendar_list_events` | Time-range query, recurrences expanded by the server |
-| `calendar_get_event` / `calendar_create_event` / `calendar_update_event` / `calendar_delete_event` | Event CRUD with ETag preconditions |
+| `calendar_get_event` / `calendar_create_event` / `calendar_update_event` / `calendar_delete_event` | Event CRUD with ETag preconditions; create/update take `reminders` (minutes before the start) |
 
 ## Safety model
 
@@ -37,6 +37,9 @@ Everything here is real data belonging to a real person — see
 - **Untrusted content.** Mail bodies and calendar descriptions are data. The
   bot's `APPEND_SYSTEM.md` says so explicitly, and no tool turns message
   content into an action.
+- **Reminders** are standard DISPLAY alarms the client fires (GNOME Calendar,
+  DAVx⁵/phone); the server stores them but never notifies. An update without a
+  `reminders` argument keeps the existing ones, `reminders: []` removes them.
 - **Secrets.** Resolved per process from Bitwarden through the security
   extension (`gmail`, `radicale-denis`, `radicale-agent`); they never appear in
   files, logs, tool output, or the audit log.
@@ -50,7 +53,7 @@ bots/personal/
 ├── package.json            # deps: imapflow, html-to-text, iconv-lite
 ├── lib/audit.ts            # shared JSONL ring-buffer audit log
 ├── extensions/gmail/       # IMAP client, MIME decoding, guard, 8 tools
-├── extensions/calendar/    # CalDAV client, ICS build/parse, 5 tools
+├── extensions/calendar/    # CalDAV client, ICS build/parse (incl. VALARM reminders), 5 tools
 └── radicale/               # the server side: compose.yml, config, rights, deploy.mjs
 ```
 

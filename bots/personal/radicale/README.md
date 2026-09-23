@@ -60,9 +60,11 @@ ssh 192.168.1.6 'cd ~/radicale && podman-compose --in-pod false down && tar xzf 
   at startup, so a plain `up -d` would keep running with the old files.
 - Timed events are stored in UTC and all-day events as dates, so no VTIMEZONE
   is needed and every client renders them in its own zone.
-- No VALARM and no ATTENDEE: this is a single-user calendar. Adding reminders
-  means adding a VALARM component in `extensions/calendar/ics.ts` and letting
-  clients fire it — Radicale never sends notifications itself.
+- Reminders are DISPLAY alarms stored in the event (VALARM); the client fires
+  them — Radicale itself never notifies, and it needs no configuration for
+  them (it stores whatever ICS a client PUTs). Absolute-time and non-DISPLAY
+  alarms written by other clients are ignored by the agent's parser.
+- No ATTENDEE: this is a single-user calendar; invitations are out of scope.
 - The two htpasswd entries are the only way in; `/.well-known/caldav` is served
   by Radicale itself (302 to `/`), which is what GNOME Calendar and phones
   follow. The public host sees constant scanner traffic (all 401) — that is

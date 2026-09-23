@@ -36,6 +36,6 @@ calendar:
     create: true
     update: true
     delete: true # a full copy is written to the audit log first
-    reminders: false # no VALARM: this calendar stores events only
+    reminders: true # DISPLAY alarms (VALARM), N minutes before the start; the client fires them
     attendees: false
     recurring_instance_edits: false # an update rewrites the whole series

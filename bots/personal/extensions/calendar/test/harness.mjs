@@ -20,6 +20,7 @@ import {
 	caldavStamp,
 	foldLine,
 	formatInZone,
+	formatTrigger,
 	parseEvents,
 	parseInstant,
 	toDateOnly,
@@ -148,7 +149,7 @@ ${responses}
 </D:multistatus>`;
 }
 
-function ics({ uid, summary = "Event", dtstart = "20260924T120000Z", dtend, rrule, recurrenceId, location, description }) {
+function ics({ uid, summary = "Event", dtstart = "20260924T120000Z", dtend, rrule, recurrenceId, location, description, alarm }) {
 	const lines = [
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
@@ -163,6 +164,7 @@ function ics({ uid, summary = "Event", dtstart = "20260924T120000Z", dtend, rrul
 	if (recurrenceId) lines.push(`RECURRENCE-ID:${recurrenceId}`);
 	if (location) lines.push(`LOCATION:${location}`);
 	if (description) lines.push(`DESCRIPTION:${description}`);
+	if (alarm) lines.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${summary}`, `TRIGGER:${alarm}`, "END:VALARM");
 	lines.push("END:VEVENT", "END:VCALENDAR");
 	return `${lines.join("\r\n")}\r\n`;
 }
@@ -275,6 +277,59 @@ test("caldavStamp: UTC compact form", () => {
 	assertEqual(caldavStamp("2026-09-24T12:00:00.000Z"), "20260924T120000Z");
 });
 
+test("reminders: build event with alarms and parse them back", () => {
+	const icsText = buildEvent({
+		uid: "rem-1",
+		summary: "Dentist",
+		start: { iso: "2026-09-24T10:00:00.000Z", allDay: false },
+		end: { iso: "2026-09-24T11:00:00.000Z", allDay: false },
+		reminders: [10, 1440],
+		now: new Date("2026-09-20T00:00:00Z"),
+	});
+	assert(icsText.includes("BEGIN:VALARM"), icsText);
+	assert(icsText.includes("TRIGGER:-PT10M"), icsText);
+	assert(icsText.includes("TRIGGER:-P1D"), icsText);
+	assert(icsText.includes("ACTION:DISPLAY"), icsText);
+	const [event] = parseEvents({ ics: icsText }, "Europe/Moscow");
+	assertEqual(event.reminders, [10, 1440]);
+});
+
+test("reminders: parsed from a client-written alarm, and cleared when absent", () => {
+	const [withAlarm] = parseEvents(
+		{ ics: ics({ uid: "a", summary: "Call", dtstart: "20260924T120000Z", dtend: "20260924T123000Z", alarm: "-PT15M" }) },
+		"Europe/Moscow",
+	);
+	assertEqual(withAlarm.reminders, [15]);
+
+	const [without] = parseEvents({ ics: ics({ uid: "b", summary: "Call" }) }, "Europe/Moscow");
+	assertEqual(without.reminders, undefined);
+});
+
+test("reminders: trigger relative to the end counts back to the start", () => {
+	const source = ics({ uid: "c", summary: "Workshop", dtstart: "20260924T120000Z", dtend: "20260924T140000Z", alarm: "-PT30M" }).replace(
+		"TRIGGER:-PT30M",
+		"TRIGGER;RELATED=END:-PT30M",
+	);
+	const [event] = parseEvents({ ics: source }, "Europe/Moscow");
+	assertEqual(event.reminders, [90]);
+});
+
+test("reminders: non-DISPLAY and absolute alarms are ignored", () => {
+	const source = ics({ uid: "d", summary: "Noisy", alarm: "-PT5M" }).replace("ACTION:DISPLAY", "ACTION:EMAIL");
+	assertEqual(parseEvents({ ics: source }, "Europe/Moscow")[0].reminders, undefined);
+	const absolute = ics({ uid: "e", summary: "Absolute", alarm: "-PT5M" }).replace("TRIGGER:-PT5M", "TRIGGER;VALUE=DATE-TIME:20260924T110000Z");
+	assertEqual(parseEvents({ ics: absolute }, "Europe/Moscow")[0].reminders, undefined);
+});
+
+test("formatTrigger: days, hours and minutes", () => {
+	assertEqual(formatTrigger(10), "-PT10M");
+	assertEqual(formatTrigger(1440), "-P1D");
+	assertEqual(formatTrigger(90), "-PT1H30M");
+	assertEqual(formatTrigger(1500), "-P1DT1H");
+	assertEqual(formatTrigger(0), "-PT0M");
+	assertEqual(formatTrigger(-5), "PT5M");
+});
+
 // ── tool tests (mocked fetch) ─────────────────────────────────────────────
 
 const pi = makePi();
@@ -380,6 +435,46 @@ test("create: all-day events round trip as dates", async () => {
 	assert(result.content[0].text.includes("(all day)"), result.content[0].text);
 });
 
+test("create/update: reminders ride along, survive an unrelated update, and clear with []", async () => {
+	let putBody = "";
+	mockFetch((request) => {
+		if (request.method === "PUT") {
+			putBody = request.body;
+			return new Response(null, { status: 204, headers: { etag: '"e"' } });
+		}
+		return new Response(ics({ uid: "event-7", summary: "Standup", dtstart: "20260924T090000Z", dtend: "20260924T091500Z", alarm: "-PT10M" }), {
+			status: 200,
+			headers: { etag: '"e7"' },
+		});
+	});
+
+	const created = await runTool(tool("calendar_create_event"), {
+		summary: "Standup",
+		start: "2026-09-24 12:00",
+		end: "2026-09-24 12:15",
+		reminders: [10, 1440],
+	});
+	assert(!created.isError, created.content[0].text);
+	assert(putBody.includes("BEGIN:VALARM") && putBody.includes("TRIGGER:-PT10M") && putBody.includes("TRIGGER:-P1D"), putBody);
+	assert(created.content[0].text.includes("10 min before"), created.content[0].text);
+
+	await runTool(tool("calendar_update_event"), { uid: "event-7", summary: "Standup (new room)" });
+	assert(putBody.includes("TRIGGER:-PT10M"), `reminder lost on update: ${putBody}`);
+	assert(putBody.includes("SUMMARY:Standup (new room)"), putBody);
+
+	await runTool(tool("calendar_update_event"), { uid: "event-7", reminders: [] });
+	assert(!putBody.includes("VALARM"), `reminder not cleared: ${putBody}`);
+});
+
+test("get: shows the reminders of an event", async () => {
+	mockFetch(() =>
+		new Response(ics({ uid: "event-8", summary: "Gym", dtstart: "20260924T160000Z", alarm: "-PT30M" }), { status: 200, headers: { etag: '"e8"' } }),
+	);
+	const result = await runTool(tool("calendar_get_event"), { uid: "event-8" });
+	assert(!result.isError, result.content[0].text);
+	assert(result.content[0].text.includes("30 min before"), result.content[0].text);
+});
+
 test("update: keeps unmentioned fields and PUTs with If-Match", async () => {
 	mockFetch((request) => {
 		if (request.method === "GET") {
@@ -473,10 +568,16 @@ if (process.env.CALENDAR_LIVE) {
 				start: "2026-12-01 10:00",
 				end: "2026-12-01 10:30",
 				description: "Created by the calendar harness; safe to delete.",
+				reminders: [10, 1440],
 			});
 			assert(!created.isError, created.content[0].text);
+			const readBack = await runTool(tool("calendar_get_event"), { uid: created.details.uid });
+			assert(readBack.content[0].text.includes("10 min before"), readBack.content[0].text);
+			assert(readBack.content[0].text.includes("1 day before") || readBack.content[0].text.includes("1440 min before"), readBack.content[0].text);
 			const updated = await runTool(tool("calendar_update_event"), { uid: created.details.uid, summary: "pi harness test (updated)" });
 			assert(!updated.isError, updated.content[0].text);
+			const afterUpdate = await runTool(tool("calendar_get_event"), { uid: created.details.uid });
+			assert(afterUpdate.content[0].text.includes("10 min before"), `reminder lost on update: ${afterUpdate.content[0].text}`);
 			const deleted = await runTool(tool("calendar_delete_event"), { uid: created.details.uid });
 			assert(!deleted.isError, deleted.content[0].text);
 		});
