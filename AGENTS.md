@@ -14,8 +14,8 @@ Supersedes `DenisSud/pi-setup` (merged 2026-09-22; its git history was grafted o
 ## Hard rules
 
 - **Keep secrets out.** No passwords/API keys in this repo (memory notes included) — credentials live in Bitwarden (folder `pi`) and reach a command only through the `security` extension's secrets profiles (`bash { secrets: "<profile>" }`, ptc `secrets_sh`); never print, copy, or paste secret values into notes, prompts, commits, or replies.
-- Extensions import only from the aliased packages: `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-tui`, `typebox`. No new npm dependencies. Skills are markdown.
-- Run extension tests before committing: `extensions/<name>/test/run.sh harness` (no network). Consult also has a `live` mode (needs `CONSULT_KEY`, costs ~$0.01).
+- Extensions import only from the aliased packages: `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-tui`, `typebox`. The base adds no npm dependencies; a bot may declare its own when the tool genuinely needs a library (`bots/personal` uses imapflow/html-to-text/iconv-lite from its own `package.json`). Skills are markdown.
+- Run extension tests before committing: `extensions/<name>/test/run.sh harness` (no network), and the same under `bots/<name>/extensions/…`. `live` modes exist where a service is involved and need secrets/Bitwarden (consult's costs ~$0.01).
 - Commit with short descriptive messages; push after committing.
 
 ## Load-bearing copy
