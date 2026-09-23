@@ -133,6 +133,18 @@ export function gmailConfig(): GmailConfig {
 	return current.config;
 }
 
+/**
+ * Google displays app passwords as four space-separated groups
+ * (`abcd efgh ijkl mnop`). The spaces are display sugar, not part of the
+ * secret, and pasting them into the vault is the obvious mistake — drop them
+ * when that's exactly the shape (16 alphanumerics). Anything else passes
+ * through trimmed, so a real password is never silently mangled.
+ */
+export function normalizeAppPassword(raw: string): string {
+	const compact = raw.replace(/\s+/g, "");
+	return /^[a-z0-9]{16}$/i.test(compact) ? compact : raw.trim();
+}
+
 async function credentials(config: GmailConfig): Promise<{ user: string; pass: string }> {
 	const current = state();
 	if (current.credentials) return current.credentials;
@@ -145,9 +157,9 @@ async function credentials(config: GmailConfig): Promise<{ user: string; pass: s
 				`Add the profile to ~/.pi/agent/security.json and run \`rbw unlock\`.`,
 		);
 	}
-	const pass = env.GMAIL_APP_PASSWORD ?? env.PASSWORD ?? Object.values(env)[0];
-	if (!pass) throw new Error(`gmail: secrets profile "${config.secretProfile}" resolved no password (expected GMAIL_APP_PASSWORD)`);
-	current.credentials = { user: config.username, pass };
+	const raw = env.GMAIL_APP_PASSWORD ?? env.PASSWORD ?? Object.values(env)[0];
+	if (!raw) throw new Error(`gmail: secrets profile "${config.secretProfile}" resolved no password (expected GMAIL_APP_PASSWORD)`);
+	current.credentials = { user: config.username, pass: normalizeAppPassword(raw) };
 	return current.credentials;
 }
 

@@ -39,9 +39,11 @@ function address(list?: { name?: string; address?: string }[]): string {
 	return rendered.length ? rendered.join(", ") : "(none)";
 }
 
+/** Timestamps are UTC instants; the zone marker is explicit so a reader never
+ * mistakes them for local time ("14:10" in Moscow is 17:10). */
 function stamp(date?: Date): string {
 	if (!date) return "(no date)";
-	return new Date(date).toISOString().replace("T", " ").slice(0, 16);
+	return `${new Date(date).toISOString().replace("T", " ").slice(0, 16)} UTC`;
 }
 
 /** One compact block per message: what it is, and the ids needed to read it. */

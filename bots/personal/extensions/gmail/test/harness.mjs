@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { ImapFlow } from "imapflow";
-import { closeClient, resetState, setImapFactory } from "../client.ts";
+import { closeClient, normalizeAppPassword, resetState, setImapFactory } from "../client.ts";
 import { AUDIT_LIMIT, isMailboxKey, MAILBOX_KEYS } from "../guard.ts";
 import gmailExtension from "../index.ts";
 import { attachmentsOf, bodyPartsOf, decodeTransfer, encodeHeader, htmlToText } from "../mime.ts";
@@ -31,7 +31,7 @@ const ATTACHMENTS = join(TMP, "attachments");
  *  exercised for real (config parsing, execFile, env handoff). */
 function stubRbw() {
 	const path = join(TMP, "rbw");
-	writeFileSync(path, "#!/bin/sh\necho harness-app-password\n", { mode: 0o755 });
+	writeFileSync(path, '#!/bin/sh\necho "${RBW_STUB_PASSWORD:-harness-app-password}"\n', { mode: 0o755 });
 	writeFileSync(
 		join(TMP, "security.json"),
 		JSON.stringify({
@@ -315,11 +315,16 @@ const DRAFT = message({ mailbox: "[Gmail]/Drafts", subject: "Draft: lunch", to: 
 
 const ALL_MESSAGES = [PLAIN, HTML_ONLY, ATTACHED, DRAFT];
 const REAL_FETCH = globalThis.fetch;
+/** Auth the fake IMAP client was handed on its last connect. */
+let lastAuth;
 
 async function useServer(messages = ALL_MESSAGES) {
 	await closeClient();
 	const server = new FakeImap(messages);
-	setImapFactory(() => server);
+	setImapFactory((options) => {
+		lastAuth = options?.auth;
+		return server;
+	});
 	return server;
 }
 
@@ -542,6 +547,32 @@ test("audit log: ring buffer keeps the last entries", async () => {
 	assertEqual(audit.length, AUDIT_LIMIT);
 	assertEqual(audit.at(-1).op, "list_drafts");
 	assert(before <= AUDIT_LIMIT);
+});
+
+test("normalizeAppPassword: strips Google's display spaces", () => {
+	assertEqual(normalizeAppPassword("abcd efgh ijkl mnop"), "abcdefghijklmnop");
+	assertEqual(normalizeAppPassword("abcdefghijklmnop"), "abcdefghijklmnop");
+	assertEqual(normalizeAppPassword("  hunter2 with spaces  "), "hunter2 with spaces");
+});
+
+test("credentials: a spaced app password reaches IMAP compacted", async () => {
+	await useServer();
+	process.env.RBW_STUB_PASSWORD = "abcd efgh ijkl mnop";
+	await resetState();
+	try {
+		const result = await runTool(tool("email_list_drafts"), {});
+		assert(!result.isError, result.content[0].text);
+		assertEqual(lastAuth, { user: "denis@example.com", pass: "abcdefghijklmnop" });
+	} finally {
+		delete process.env.RBW_STUB_PASSWORD;
+		await resetState();
+	}
+});
+
+test("timestamps are marked UTC", async () => {
+	await useServer();
+	const result = await runTool(tool("email_search"), { query: "invoice" });
+	assert(result.content[0].text.includes("2026-09-20 10:00 UTC"), result.content[0].text);
 });
 
 // ── live tests ────────────────────────────────────────────────────────────
