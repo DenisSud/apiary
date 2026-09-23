@@ -345,6 +345,28 @@ test("guard: tool inputs", () => {
 	assert(checkToolInput("ptc", { code: "const {output} = await secrets_sh({profile: 'forgejo', command: 'git push'});" }, GUARD) === null, "secrets_sh allowed");
 });
 
+test("guard: ptc allows source-file mentions, blocks executions", () => {
+	const allowed = [
+		'const { resolveProfile } = await import("/home/denis/dev/pi-bots/extensions/security/rbw.ts");',
+		'const src = readFileSync("extensions/security/rbw.ts", "utf8");',
+		'await sh({ command: "grep -n resolveProfile extensions/security/rbw.ts" });',
+		'// resolveProfile lives in security/rbw.ts',
+	];
+	for (const code of allowed) {
+		assert(checkToolInput("ptc", { code }, GUARD) === null, `should allow: ${code}`);
+	}
+	const blocked = [
+		'const x = await sh({ command: "rbw get Jellyfin" });',
+		'execFileSync("/usr/bin/rbw", ["get", "Jellyfin"]);',
+		'spawnSync("rbw", ["unlock"]);',
+		'await sh({ command: "/home/denis/.local/bin/rbw list" });',
+		'const bin = "bitwarden"; await sh({ command: `${bin} list` });',
+	];
+	for (const code of blocked) {
+		assert(checkToolInput("ptc", { code }, GUARD), `should block: ${code}`);
+	}
+});
+
 test("guard: file tools check the path, not the content", () => {
 	assert(checkToolInput("edit", { path: "/home/denis/.config/rbw/rbw.json", oldText: "x", newText: "y" }, GUARD), "editing a store path blocked");
 	assert(
@@ -425,6 +447,39 @@ test("tool_call guard: blocks rbw through the real handler, allows profiles", as
 		input: { path: "/home/denis/.config/rbw/rbw.json" },
 	});
 	assert(fileRead && fileRead.block === true, "rbw store read blocked");
+});
+
+test("tool_call guard: a broken config warns instead of failing open silently", async () => {
+	const saved = process.env.PI_SECURITY_CONFIG;
+	const broken = join(TMP, "broken.json");
+	fs.writeFileSync(broken, "{ not json");
+	process.env.PI_SECURITY_CONFIG = broken;
+
+	// A fresh instance: the running one has already cached the good config.
+	const chunks = [];
+	const original = process.stderr.write.bind(process.stderr);
+	process.stderr.write = (chunk, ...rest) => {
+		chunks.push(String(chunk));
+		return original(chunk, ...rest);
+	};
+	try {
+		const freshPi = makePi();
+		securityExtension(freshPi);
+		const result = await freshPi.emit("tool_call", {
+			type: "tool_call",
+			toolCallId: "c-broken",
+			toolName: "bash",
+			input: { command: "rbw get Jellyfin" },
+		});
+		assert(result === undefined, "still fails open — pi must not be bricked by a bad config");
+		assert(
+			chunks.some((chunk) => chunk.includes("guard is INACTIVE")),
+			`stderr should name the inactive guard, got: ${JSON.stringify(chunks.join(""))}`,
+		);
+	} finally {
+		process.stderr.write = original;
+		process.env.PI_SECURITY_CONFIG = saved;
+	}
 });
 
 test("session_start: warms the redactor from every profile", async () => {

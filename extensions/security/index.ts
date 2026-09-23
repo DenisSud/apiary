@@ -42,6 +42,7 @@ export default function security(pi: ExtensionAPI) {
 	let config: SecurityConfig | null = null;
 	let configError: string | null = null;
 	let warned = false;
+	let guardWarned = false;
 
 	/** Load once; a broken config surfaces on use instead of killing pi. */
 	function getConfig(): SecurityConfig {
@@ -61,6 +62,18 @@ export default function security(pi: ExtensionAPI) {
 		if (!ctx.hasUI || warned) return;
 		warned = true;
 		ctx.ui.notify(message, level);
+	}
+
+	/** The guard fails open when its config cannot load (a broken config must not
+	 *  brick pi), but it must not do so silently — otherwise tool calls go
+	 *  unchecked for the rest of the session with no visible sign. Once per
+	 *  session, on stderr as well so print mode sees it. */
+	function warnGuardInactive(ctx: ExtensionContext, err: unknown) {
+		if (guardWarned) return;
+		guardWarned = true;
+		const message = `security: guard is INACTIVE — ${errorText(err)}; tool calls are not being checked`;
+		process.stderr.write(`${message}\n`);
+		notify(ctx, message, "error");
 	}
 
 	// Warm the redaction set as soon as a session starts, so values are
@@ -113,11 +126,12 @@ export default function security(pi: ExtensionAPI) {
 
 	// ── guards ───────────────────────────────────────────────────────────
 
-	pi.on("tool_call", (event) => {
+	pi.on("tool_call", (event, ctx) => {
 		let cfg: SecurityConfig;
 		try {
 			cfg = getConfig();
-		} catch {
+		} catch (err) {
+			warnGuardInactive(ctx, err);
 			return;
 		}
 		const reason = checkToolInput(event.toolName, event.input as Record<string, unknown>, cfg.guard);

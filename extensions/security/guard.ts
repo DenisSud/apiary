@@ -142,14 +142,22 @@ function extraMatches(text: string, settings: GuardSettings): boolean {
 	return false;
 }
 
-/** Check a ptc program: it runs arbitrary Node, so only catch blatant words. */
+/** Source-file extensions: `…/security/rbw.ts` is a module path (honest
+ *  imports, this extension's own tests), not something you can run. */
+const SOURCE_EXT = /^\.(?:[cm]?[jt]sx?|json|md)\b/;
+
+/** Check a ptc program: it runs arbitrary Node, so only catch blatant words.
+ *  A mention naming a source file is allowed, matching the bash check where a
+ *  path in an argument is not a program in command position. */
 export function checkPtcCode(code: string, settings: GuardSettings): string | null {
 	const lowered = code.toLowerCase();
 	for (const fragment of PATH_FRAGMENTS) {
 		if (lowered.includes(fragment)) return pathReason(fragment);
 	}
-	const match = lowered.match(/\b(rbw|bitwarden)\b/);
-	if (match) return programReason(match[1]);
+	for (const match of lowered.matchAll(/\b(rbw|bitwarden)\b/g)) {
+		if (SOURCE_EXT.test(lowered.slice(match.index + match[0].length))) continue;
+		return programReason(match[1]);
+	}
 	return null;
 }
 
