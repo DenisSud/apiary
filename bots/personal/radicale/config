@@ -1,0 +1,38 @@
+# Radicale config — personal calendar (cal.sudakov.site).
+#
+# Mounted read-only at /config/config. Two users (see ./users), one shared
+# calendar (/denis/main/) that the agent may write to and nothing else (see
+# ./rights). Timed events are stored in UTC and all-day events as dates, so no
+# VTIMEZONE is needed anywhere.
+
+[server]
+hosts = 0.0.0.0:5232
+max_connections = 20
+timeout = 30
+
+[auth]
+type = htpasswd
+htpasswd_filename = /config/users
+# sha512 crypt ($6$...): supported by passlib out of the box, generated with
+# `openssl passwd -6 -stdin` — no extra tooling on the host.
+htpasswd_encryption = sha512
+
+[rights]
+type = from_file
+file = /config/rights
+
+[storage]
+filesystem_folder = /data/collections
+# Keep deleted items recoverable for 30 days (sync tokens).
+max_sync_token_age = 2592000
+
+[reporting]
+# Cap on recurrence expansion in calendar-query REPORTs (DoS guard).
+max_expand_occurrence = 1000
+
+[web]
+type = none
+
+[logging]
+level = warning
+mask_passwords = true

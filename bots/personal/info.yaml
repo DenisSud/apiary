@@ -1,0 +1,41 @@
+# Prerequisites and capabilities of the personal bot.
+#
+# Credentials are never stored here: they live in Bitwarden (folder `pi`) and
+# reach the extensions at run time through the security extension's secrets
+# profiles (~/.pi/agent/security.json).
+
+gmail:
+  username: "sudakov.denis.2007@gmail.com"
+  host: "imap.gmail.com"
+  port: 993
+  tls: true
+  secret_profile: gmail
+  bitwarden_item: "pi/Google-app-password" # Gmail app password: 16 chars, no spaces
+  note: >
+    IMAP with an app password, no OAuth. App passwords need 2-Step Verification
+    on the Google account and stop working when the account password or 2FA is
+    reset — regenerate and update the Bitwarden item when that happens.
+  capabilities:
+    read: true
+    search: true
+    drafts: { read: true, create: true, update: true, delete: true }
+    send: false # no SMTP client exists in this extension
+    delete_mail: false # EXPUNGE is only reachable inside [Gmail]/Drafts
+
+calendar:
+  url: "https://cal.sudakov.site/"
+  collection: "/denis/main/" # displayname "Personal"
+  server: "Radicale 3.8.0 in a rootless podman container on the RPi (see radicale/)"
+  users:
+    denis: "full access to /denis/"
+    agent: "read/write on /denis/main/ only"
+  secret_profiles: [radicale-denis, radicale-agent]
+  bitwarden_items: ["pi/Radicale denis", "pi/Radicale agent"]
+  capabilities:
+    read: true
+    create: true
+    update: true
+    delete: true # a full copy is written to the audit log first
+    reminders: false # no VALARM: this calendar stores events only
+    attendees: false
+    recurring_instance_edits: false # an update rewrites the whole series

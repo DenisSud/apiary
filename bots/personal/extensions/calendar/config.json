@@ -1,0 +1,6 @@
+{
+  "baseUrl": "https://cal.sudakov.site",
+  "collection": "/denis/main/",
+  "secretProfile": "radicale-agent",
+  "timezone": "Europe/Moscow"
+}
