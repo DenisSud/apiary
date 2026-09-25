@@ -50,7 +50,7 @@ for `web_fetch` (the NixOS module lives in the nixos-config repo).
 | `contacts` | Gmail, read + drafts only |
 | `homelab` | homelab services, media pipeline, troubleshooting |
 | `memory` | curating the memory repo (`memory-review`) |
-| `bot-manager` | managing the bots themselves |
+| `chief-of-staff` | owning the fleet, base and docs; orchestrating the other bots |
 
 ```bash
 pi                  # base agent: base extensions + skills, shared memory
