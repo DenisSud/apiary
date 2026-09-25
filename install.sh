@@ -54,6 +54,20 @@ ln -sfn "$repo_dir/bin/pi-bot-new" "$HOME/.pi/agent/bin/pi-bot-new"
 ln -sfn "$repo_dir/fish/pi.fish" "$HOME/.config/fish/functions/pi.fish"
 echo "linked bot tooling (pi-bot, pi-bot-new, pi --bot <name>)"
 
+# pi only puts ~/.pi/agent/bin on PATH for the processes it spawns, so the
+# wrappers stay invisible in a fresh terminal unless the shell rc adds the
+# dir. Idempotent; skip with PI_NO_SHELL_RC=1.
+if [[ "${PI_NO_SHELL_RC:-0}" != "1" ]]; then
+  if [[ -f "$HOME/.zshrc" ]] && ! grep -qF '.pi/agent/bin' "$HOME/.zshrc"; then
+    printf '\n# pi bot tooling (link: %s/install.sh)\nexport PATH="$HOME/.pi/agent/bin:$PATH"\n' "$repo_dir" >> "$HOME/.zshrc"
+    echo "added ~/.pi/agent/bin to PATH in ~/.zshrc"
+  fi
+  if [[ -d "$HOME/.config/fish" ]] && ! grep -rqF '.pi/agent/bin' "$HOME/.config/fish" 2>/dev/null; then
+    printf '# pi bot tooling (link: %s/install.sh)\nfish_add_path --prepend "$HOME/.pi/agent/bin"\n' "$repo_dir" > "$HOME/.config/fish/conf.d/pi-bots.fish"
+    echo "added ~/.pi/agent/bin to PATH in fish (conf.d/pi-bots.fish)"
+  fi
+fi
+
 found=0
 for d in "$bots_home"/*/; do
   [[ -f "$d/settings.json" ]] || continue

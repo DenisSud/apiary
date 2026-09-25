@@ -83,6 +83,11 @@ The installer registers the checkout as a **local path** (`pi install
 /path/to/pi-bots`): base edits apply on `/reload` or restart, no push needed to
 test.
 
+It also puts `~/.pi/agent/bin` (where `pi-bot` lives) on PATH for interactive
+shells — appends to `~/.zshrc`, writes `~/.config/fish/conf.d/pi-bots.fish` —
+since pi only does that for the processes it spawns itself. `PI_NO_SHELL_RC=1`
+skips it.
+
 ### Settings
 
 `settings.json` ships defaults (`defaultModel`, `defaultProvider`,
