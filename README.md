@@ -46,7 +46,7 @@ for `web_fetch` (the NixOS module lives in the nixos-config repo).
 | bot | job |
 |---|---|
 | `dev` | coding: skills, research, subagents |
-| `planner` | the personal CalDAV calendar (`cal.sudakov.site`) |
+| `time-management` | time management: the personal CalDAV calendar (`cal.sudakov.site`) |
 | `contacts` | Gmail, read + drafts only |
 | `homelab` | homelab services, media pipeline, troubleshooting |
 | `memory` | curating the memory repo (`memory-review`) |
