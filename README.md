@@ -69,8 +69,9 @@ from `~/.pi/agent/`, so credentials, model catalogs and trust decisions are
 common to all bots. Secrets profiles need no symlink at all: the security
 extension reads the absolute `~/.pi/agent/security.json`.
 
-Bots are **local-first**: no remote, no push. Add one when a bot needs to run
-on another machine.
+Bots start **local-first**. When one must run on another machine, add a
+private Forgejo remote — the current fleet uses `DenisSud/bot-<name>` (docs:
+`bots-docs`) so pc and g14 share it. Pull --rebase before editing, push after.
 
 ## Install per machine
 

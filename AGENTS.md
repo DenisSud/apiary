@@ -32,7 +32,7 @@ Bots live in `~/Bots/<name>` — a pi agent dir: `APPEND_SYSTEM.md` (persona), `
 - Scaffold with `pi-bot new <name>`; run with `pi-bot <name>`.
 - Never put bot-specific content in the base: the base is only what *every* agent needs.
 - `APPEND_SYSTEM.md` is rendered verbatim into the system prompt — edit deliberately.
-- Bot content is local-first: no remote until a bot must run elsewhere.
+- Bot repos start local-first; the current fleet has private Forgejo remotes (`DenisSud/bot-<name>`, docs `bots-docs`) so pc and g14 stay in sync — pull --rebase before editing, push after.
 
 ## Repo layout
 
