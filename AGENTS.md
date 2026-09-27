@@ -51,5 +51,6 @@ Bots live in `~/Bots/<name>` — a pi agent dir: `APPEND_SYSTEM.md` (persona), `
 ## Related but separate
 
 - `~/Bots/docs` — system docs and decisions (architecture, per-bot notes, migration).
+- `~/Bots/docs/dist-sys-glossary.md` — distributed-systems vocabulary (Kleppmann CDS) to use when designing the connector/runtime; read it before architecture discussions.
 - `~/.pi/agent/memory` — personal memory notes, a separate private git repo. When you change behavior agents rely on, update the relevant notes there and push both repos.
 - `~/dev/bot` — the Grok-bot-style SaaS prototype this setup is meant to become.
