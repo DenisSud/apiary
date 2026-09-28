@@ -342,6 +342,12 @@ operation, so they are right for every turn. The prompt stays disabled until
 the session is attached and hydrated. Rendering reads the snapshot on every
 replicated update, so streaming comes for free.
 
+The look follows the Grok Bot app (flaviocopes.com/grok-bot): light surfaces,
+system sans font, monogram avatars, gray pills, right-aligned user bubbles,
+plain assistant text, tool results as gray panels, centered system notes.
+The mobile Grok Bot screenshots are the styling reference for the feature
+work that follows.
+
 Known gaps: no reconnect (a dropped bridge socket needs a manual reload), no
 session picker beyond the last session, plain text output only.
 
