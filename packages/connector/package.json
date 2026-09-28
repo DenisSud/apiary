@@ -5,5 +5,8 @@
   "type": "module",
   "description": "Bot registry and session policy shared by the TUI and web clients",
   "main": "./src/index.ts",
-  "types": "./src/index.ts"
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  }
 }

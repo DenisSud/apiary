@@ -93,6 +93,7 @@ Solve those with upstream mechanisms first.
 
 ```
 src/paths.ts     state root, env overrides
+src/files.ts     atomic JSON read/write primitives
 src/registry.ts  bot scan + route files
 src/sessions.ts  per-bot session register
 src/index.ts     re-exports
