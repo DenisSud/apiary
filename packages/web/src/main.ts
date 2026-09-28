@@ -92,9 +92,14 @@ const transcriptElement = mustFind<HTMLElement>("#transcript");
 const promptForm = mustFind<HTMLFormElement>("#prompt-form");
 const promptInput = mustFind<HTMLTextAreaElement>("#prompt");
 const sendButton = mustFind<HTMLButtonElement>("#send");
+const stopButton = mustFind<HTMLButtonElement>("#stop");
+const compactButton = mustFind<HTMLButtonElement>("#compact");
+const newButton = mustFind<HTMLButtonElement>("#new");
 
 let active: ActiveSession | undefined;
 let bots: BotSummary[] = [];
+// True while the open session has a running turn; drives the sidebar marker.
+let laneBusy = false;
 
 // No prompt until a session is attached and hydrated.
 promptInput.disabled = true;
@@ -136,6 +141,7 @@ function renderBots(): void {
 	const fragment = document.createDocumentFragment();
 	for (const bot of bots) {
 		const item = document.createElement("li");
+		const busy = bot.name === active?.bot && laneBusy;
 		item.className = bot.name === active?.bot ? "active" : "";
 		item.title = bot.dir;
 
@@ -145,8 +151,8 @@ function renderBots(): void {
 		open.onclick = () => void openBot(bot.name, false);
 
 		const state = document.createElement("span");
-		state.className = bot.running ? "dot running" : "dot";
-		state.textContent = bot.running ? "running" : "stopped";
+		state.className = busy ? "dot busy" : bot.running ? "dot running" : "dot";
+		state.textContent = busy ? "busy" : bot.running ? "running" : "stopped";
 
 		const fresh = document.createElement("button");
 		fresh.className = "new";
@@ -203,9 +209,12 @@ async function openBot(bot: string, fresh: boolean): Promise<void> {
 			// A late update from a previous bot must not clobber the current view.
 			if (active?.sessionId === openSessionId) renderTranscript(state.snapshot);
 		});
-		setStatus(snapshotIsRunning() ? "running" : "ready");
+		updateActions();
+		setStatus(snapshotIsRunning() ? "running" : "ready", snapshotIsRunning() ? "busy" : "idle");
 		renderBots();
 		promptInput.focus();
+		// The attach registered this session as the bot's last one.
+		void refreshBots();
 	} catch (error) {
 		setStatus(message(error), "error");
 	}
@@ -240,6 +249,7 @@ async function closeSession(): Promise<void> {
 	closing.ws.close();
 	promptInput.disabled = true;
 	sendButton.disabled = true;
+	updateActions();
 	try {
 		await closing.client.dispose();
 	} catch {
@@ -250,7 +260,29 @@ async function closeSession(): Promise<void> {
 }
 
 function snapshotIsRunning(): boolean {
-	return active?.activated.transcript.state.value?.snapshot?.operation?.status === "running";
+	return currentOperation() !== undefined;
+}
+
+// A snapshot operation is present while the lane is busy; status is "open"
+// when it can still be aborted and "aborting" once the abort was requested.
+function currentOperation(): { id: string; status: string } | undefined {
+	const operation = active?.activated.transcript.state.value?.snapshot?.operation;
+	return operation === null || operation === undefined ? undefined : operation;
+}
+
+// Buttons only do what the lane can take: nothing while connecting, abort while
+// running, compact while idle.
+function updateActions(): void {
+	const live = active !== undefined;
+	const operation = currentOperation();
+	stopButton.disabled = !live || operation?.status !== "open";
+	compactButton.disabled = !live || operation !== undefined;
+	newButton.disabled = !live;
+	const busy = operation !== undefined;
+	if (laneBusy !== busy) {
+		laneBusy = busy;
+		renderBots();
+	}
 }
 
 function renderTranscript(snapshot: TranscriptSnapshot | null | undefined): void {
@@ -268,10 +300,11 @@ function renderTranscript(snapshot: TranscriptSnapshot | null | undefined): void
 	if (streaming !== undefined) fragment.append(renderMessage(streaming, true));
 	transcriptElement.replaceChildren(fragment);
 	if (stick) transcriptElement.scrollTop = transcriptElement.scrollHeight;
-	const running = snapshot.operation !== null && snapshot.operation.status === "running";
+	const running = snapshot.operation !== null && snapshot.operation !== undefined;
 	setStatus(running ? "running" : "ready", running ? "busy" : "idle");
 	sendButton.disabled = running;
 	promptInput.disabled = running;
+	updateActions();
 }
 
 function isNearBottom(): boolean {
@@ -283,9 +316,9 @@ function renderEntry(entry: Entry): HTMLElement | undefined {
 		case "message":
 			return renderMessage(entry.message, false);
 		case "compaction":
-			return note("compaction", entry.summary);
+			return collapsible("compaction", entry.summary);
 		case "branch_summary":
-			return note("branch summary", entry.summary);
+			return collapsible("branch summary", entry.summary);
 		case "custom":
 			return note(entry.customType, "");
 		default:
@@ -367,6 +400,7 @@ promptForm.addEventListener("submit", (event) => {
 	promptInput.value = "";
 	sendButton.disabled = true;
 	promptInput.disabled = true;
+	setStatus("running", "busy");
 	void active.activated.agent.prompt({ message: text, images: null }, BACKGROUND_CONTEXT).then(
 		(response) => {
 			if (!response.accepted) setStatus(response.error.message, "error");
@@ -384,5 +418,44 @@ promptInput.addEventListener("keydown", (event) => {
 
 refreshButton.addEventListener("click", () => void refreshBots());
 window.addEventListener("focus", () => void refreshBots());
+
+stopButton.addEventListener("click", () => {
+	const session = active;
+	const operation = currentOperation();
+	if (session === undefined || operation === undefined) return;
+	stopButton.disabled = true;
+	setStatus("aborting", "busy");
+	void session.activated.agent.requestAbort(operation.id, BACKGROUND_CONTEXT).catch((error: unknown) => {
+		setStatus(message(error), "error");
+		updateActions();
+	});
+});
+
+compactButton.addEventListener("click", () => {
+	const session = active;
+	if (session === undefined) return;
+	compactButton.disabled = true;
+	setStatus("compacting", "busy");
+	void session.activated.agent.compact({ customInstructions: null }, BACKGROUND_CONTEXT).then(
+		(response) => {
+			if (!response.accepted) {
+				setStatus(response.error.message, "error");
+				updateActions();
+			} else if (response.error !== null) {
+				setStatus(response.error.message, "error");
+				updateActions();
+			}
+		},
+		(error: unknown) => {
+			setStatus(message(error), "error");
+			updateActions();
+		},
+	);
+});
+
+newButton.addEventListener("click", () => {
+	if (active === undefined) return;
+	void openBot(active.bot, true);
+});
 
 await refreshBots();

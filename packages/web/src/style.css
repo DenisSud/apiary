@@ -77,6 +77,7 @@ body {
 
 .dot { color: var(--muted); font-size: 11px; }
 .dot.running { color: var(--ok); }
+.dot.busy { color: var(--accent); }
 
 .new {
   background: none;
@@ -93,11 +94,30 @@ body {
 
 #session-bar {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   color: var(--muted);
 }
+
+#session-status { flex: 1; }
+
+#session-actions { display: flex; gap: 6px; }
+
+#session-actions button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+#session-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+#session-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+#stop:not(:disabled) { border-color: var(--error); color: var(--error); }
 
 #session-status.error { color: var(--error); }
 #session-status.busy { color: var(--accent); }
@@ -136,7 +156,7 @@ body {
   font-size: 12px;
 }
 
-.message pre {
+.message pre, #transcript > details pre {
   margin: 6px 0 0;
   padding: 8px;
   background: #14161a;
@@ -145,12 +165,27 @@ body {
   white-space: pre-wrap;
 }
 
+#transcript > details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  max-width: 900px;
+}
+
+#transcript > details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .note {
   color: var(--muted);
   font-size: 12px;
   border-left: 2px solid var(--border);
   padding: 4px 8px;
   margin: 8px 0;
+  white-space: pre-wrap;
 }
 
 .note strong { color: var(--text); margin-right: 6px; }
