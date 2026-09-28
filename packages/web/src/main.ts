@@ -111,6 +111,47 @@ function mustFind<T extends Element>(selector: string): T {
 	return element;
 }
 
+const AVATAR_COLORS = [
+	"#ff7a45",
+	"#3b82f6",
+	"#10b981",
+	"#a855f7",
+	"#ec4899",
+	"#8d6e63",
+	"#ef4444",
+	"#14b8a6",
+	"#6366f1",
+	"#f59e0b",
+];
+
+function avatar(name: string): HTMLSpanElement {
+	const element = document.createElement("span");
+	element.className = "avatar";
+	let hash = 7;
+	for (const character of name) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+	element.style.background = AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? AVATAR_COLORS[0] ?? "#8e8e93";
+	element.textContent = (name[0] ?? "?").toUpperCase();
+	element.setAttribute("aria-hidden", "true");
+	return element;
+}
+
+function setSessionTitle(bot?: string, sessionId?: string): void {
+	sessionTitle.replaceChildren();
+	if (bot === undefined || sessionId === undefined) {
+		sessionTitle.textContent = "no session";
+		promptInput.placeholder = "Prompt";
+		return;
+	}
+	const name = document.createElement("span");
+	name.className = "title-name";
+	name.textContent = bot;
+	const id = document.createElement("span");
+	id.className = "title-id";
+	id.textContent = sessionId.slice(0, 8);
+	sessionTitle.append(avatar(bot), name, id);
+	promptInput.placeholder = `Message ${bot}`;
+}
+
 async function fetchBots(): Promise<BotSummary[]> {
 	const response = await fetch("/api/bots");
 	if (!response.ok) throw new Error(`/api/bots: ${response.status}`);
@@ -145,14 +186,19 @@ function renderBots(): void {
 		item.className = bot.name === active?.bot ? "active" : "";
 		item.title = bot.dir;
 
+		const meta = document.createElement("div");
+		meta.className = "bot-meta";
+
 		const open = document.createElement("button");
 		open.className = "bot-name";
 		open.textContent = bot.name;
 		open.onclick = () => void openBot(bot.name, false);
 
 		const state = document.createElement("span");
-		state.className = busy ? "dot busy" : bot.running ? "dot running" : "dot";
-		state.textContent = busy ? "busy" : bot.running ? "running" : "stopped";
+		state.className = busy ? "bot-state busy" : bot.running ? "bot-state running" : "bot-state";
+		state.textContent = busy ? "running a turn" : bot.running ? "server running" : "idle";
+
+		meta.append(open, state);
 
 		const fresh = document.createElement("button");
 		fresh.className = "new";
@@ -160,7 +206,7 @@ function renderBots(): void {
 		fresh.title = "new session";
 		fresh.onclick = () => void openBot(bot.name, true);
 
-		item.append(open, state, fresh);
+		item.append(avatar(bot.name), meta, fresh);
 		fragment.append(item);
 	}
 	botList.replaceChildren(fragment);
@@ -204,7 +250,7 @@ async function openBot(bot: string, fresh: boolean): Promise<void> {
 		await activated.management.attach(sessionId, BACKGROUND_CONTEXT);
 
 		active = { bot, sessionId, serverId, client, activated, ws, unsubscribe: () => {} };
-		sessionTitle.textContent = `${bot} / ${sessionId.slice(0, 8)}`;
+		setSessionTitle(bot, sessionId);
 		active.unsubscribe = activated.transcript.state.subscribe((state) => {
 			// A late update from a previous bot must not clobber the current view.
 			if (active?.sessionId === openSessionId) renderTranscript(state.snapshot);
@@ -256,7 +302,7 @@ async function closeSession(): Promise<void> {
 		// the socket may already be gone
 	}
 	transcriptElement.replaceChildren();
-	sessionTitle.textContent = "no session";
+	setSessionTitle();
 }
 
 function snapshotIsRunning(): boolean {
@@ -337,7 +383,7 @@ function renderMessage(message: MessageLike, streaming: boolean): HTMLElement {
 
 	const role = document.createElement("div");
 	role.className = "role";
-	role.textContent = message.role;
+	role.textContent = message.role === "toolResult" ? "tool result" : message.role;
 	article.append(role);
 
 	const content = Array.isArray(message.content) ? message.content : [];
