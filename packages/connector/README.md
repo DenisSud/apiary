@@ -287,8 +287,9 @@ passes `PI_BOT_NAME` / `PI_BOT_BIN`. No new state, no new policy.
 
 ## Web client (S4)
 
-Status: M4.1–M4.3 done (`b02298c`, `ae3fd35`, `dc21fb0`). This is the first
-client that shares the backend with the TUI instead of forking it.
+Status: M4.1–M4.4 done (`b02298c`, `ae3fd35`, `dc21fb0`, plus the rendering
+pass). This is the first client that shares the backend with the TUI instead
+of forking it.
 
 ### Shape
 
@@ -328,28 +329,49 @@ pi-client + WebSocket byte transport   opaque byte relay + static files
 ### App
 
 ```
-npm run build -w packages/web    # bundle to packages/web/dist
+bun install                      # once, from the repo root
+bun run build                    # bundle the browser app to packages/web/dist
+bun run test                     # connector tests
 bin/pi-bots-web                  # serve app, /api/bots, and /ws
 ```
 
-The app lists bots (running dot from the route file), opens the last session
-or a new one, renders the replicated transcript (user/assistant text,
-collapsible thinking, tool calls, and compaction summaries, tool results),
-and sends prompts through AgentController. Session actions: stop aborts the
-open operation, compact summarizes the history while idle, new starts a
-fresh session. The prompt and the sidebar busy marker follow the snapshot's
-operation, so they are right for every turn. The prompt stays disabled until
-the session is attached and hydrated. Rendering reads the snapshot on every
-replicated update, so streaming comes for free.
+The app lists bots (blobatar icon per name), opens the last session or a new
+one, and renders the replicated transcript through AgentController. Session
+actions: stop aborts the open operation, compact summarizes the history while
+idle, new starts a fresh session. The prompt and the sidebar busy marker
+follow the snapshot's operation, so they are right for every turn.
+
+Rendering, in the order a turn produces it:
+
+- Assistant text is markdown (marked, with raw HTML dropped and links
+  rewritten), user text is plain in a gray bubble.
+- Thinking is a collapsed step line. A turn with nothing to show yet prints
+  an animated `thinking` line from the snapshot, not a placeholder kept in
+  the DOM.
+- A tool call is one compact `bash: <command>`-style line, with its arguments
+  and its result nested in the same `<details>`; a running tool shows a
+  spinner from `operation.runningTools`.
+- Entries are appended, never rebuilt: opening a `<details>` survives the
+  next snapshot, new entries fade in, and the streaming answer's caret keeps
+  blinking because only its text node is updated. Compaction and session
+  switches rebuild, because the transcript is replaced.
+- The reader is followed only while they are at the bottom; scrolling away
+  reveals a `↓ latest` button.
+- While a turn runs the composer sends a steer, and the pending message shows
+  as a `steering` bubble from the snapshot's `queues`; stop hands the queued
+  text back to the composer.
 
 The look follows the Grok Bot app (flaviocopes.com/grok-bot): light surfaces,
-system sans font, monogram avatars, gray pills, right-aligned user bubbles,
+system sans font, blobatar avatars, gray pills, right-aligned user bubbles,
 plain assistant text, tool results as gray panels, centered system notes.
-The mobile Grok Bot screenshots are the styling reference for the feature
-work that follows.
+The header blobatar is the live one: it breathes on hover and its eyes follow
+the pointer (`blobatar/gaze`); the list icons are the same blobatars without a
+gaze driver.
 
 Known gaps: no reconnect (a dropped bridge socket needs a manual reload), no
-session picker beyond the last session, plain text output only.
+session picker beyond the last session, no diff rendering in tool results,
+and no turn grouping (`Worked for 2m · 5 steps`). Package installs use bun;
+the connector and the pi runtime still execute on node.
 
 ### Milestones
 
@@ -360,6 +382,10 @@ session picker beyond the last session, plain text output only.
 - M4.3 verbs (done): stop, compact, new in the session bar, plus the busy
   state in the sidebar and the prompt. Same smoke covers abort during a
   running tool call and compaction.
+- M4.4 rendering (done): markdown answers, compact tool steps with nested
+  results, a spinner for a running tool, a thinking line, steer-while-busy
+  with a queued bubble, abort restoring the queued text, blobatar icons, and
+  append-only transcript updates so nothing flickers or closes.
 
 ### Out of scope (M5)
 

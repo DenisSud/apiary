@@ -5,6 +5,8 @@ import {
 	type ActivatedClientRuntimeServer,
 } from "@pi/fork/experimental/services/activation.ts";
 import { createServerServiceSource, createSessionServiceSource } from "@pi/fork/experimental/services/connection.ts";
+import { blobatarSvg } from "./blob.ts";
+import { renderMarkdown } from "./markdown.ts";
 
 // Minimal browser client for the connector bridge. One WebSocket carries one
 // session's byte stream to the bot's pi server; everything above it uses the
@@ -42,6 +44,7 @@ interface MessageLike {
 	isError?: boolean;
 	stopReason?: string;
 	errorMessage?: string;
+	toolCallId?: string;
 }
 
 interface MessageEntry {
@@ -66,10 +69,35 @@ interface CustomEntry {
 }
 type Entry = MessageEntry | CompactionEntry | BranchSummaryEntry | CustomEntry;
 
+interface RunningTool {
+	status: "running" | "settled";
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+}
+
+interface QueuedItem {
+	entryId: string;
+	kind: string;
+	type: string;
+	message?: MessageLike;
+	customType?: string;
+}
+
+interface Operation {
+	id: string;
+	kind: string;
+	status: string;
+	deferred?: unknown;
+	streamingMessage?: MessageLike;
+	runningTools?: RunningTool[];
+}
+
 interface TranscriptSnapshot {
 	lane: string;
 	transcript: Entry[];
-	operation: { id: string; kind: string; status: string; streamingMessage?: MessageLike } | null;
+	operation: Operation | null;
+	queues?: QueuedItem[];
 	configuration?: { model?: { provider: string; modelId: string }; thinkingLevel?: string };
 	stats?: { messageCount?: number };
 }
@@ -95,15 +123,33 @@ const sendButton = mustFind<HTMLButtonElement>("#send");
 const stopButton = mustFind<HTMLButtonElement>("#stop");
 const compactButton = mustFind<HTMLButtonElement>("#compact");
 const newButton = mustFind<HTMLButtonElement>("#new");
+const latestButton = mustFind<HTMLButtonElement>("#latest");
 
 let active: ActiveSession | undefined;
 let bots: BotSummary[] = [];
 // True while the open session has a running turn; drives the sidebar marker.
 let laneBusy = false;
+// The reader is at the end and wants new output to pull the view down.
+let following = true;
+
+// The transcript is appended to, never rebuilt, so <details> stay open, the
+// streaming caret keeps blinking, and new entries can animate in. Compaction
+// and session switches replace the list and go through the rebuild path.
+let renderedIds: string[] = [];
+const toolSteps = new Map<string, HTMLDetailsElement>();
+const liveSlot = document.createElement("div");
+liveSlot.className = "live";
+let live: {
+	shape: string;
+	text?: { element: HTMLElement; source: string };
+	thinking?: { element: HTMLElement; source: string };
+} = { shape: "" };
 
 // No prompt until a session is attached and hydrated.
 promptInput.disabled = true;
 sendButton.disabled = true;
+resetTranscript();
+updateLatest();
 
 function mustFind<T extends Element>(selector: string): T {
 	const element = document.querySelector<T>(selector);
@@ -111,45 +157,27 @@ function mustFind<T extends Element>(selector: string): T {
 	return element;
 }
 
-const AVATAR_COLORS = [
-	"#ff7a45",
-	"#3b82f6",
-	"#10b981",
-	"#a855f7",
-	"#ec4899",
-	"#8d6e63",
-	"#ef4444",
-	"#14b8a6",
-	"#6366f1",
-	"#f59e0b",
-];
-
-function avatar(name: string): HTMLSpanElement {
-	const element = document.createElement("span");
-	element.className = "avatar";
-	let hash = 7;
-	for (const character of name) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-	element.style.background = AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? AVATAR_COLORS[0] ?? "#8e8e93";
-	element.textContent = (name[0] ?? "?").toUpperCase();
-	element.setAttribute("aria-hidden", "true");
-	return element;
-}
+// The session header holds the one live blobatar; its gaze driver has to be
+// stopped whenever the header is rebuilt.
+let liveBlobatarStop: (() => void) | undefined;
 
 function setSessionTitle(bot?: string, sessionId?: string): void {
+	liveBlobatarStop?.();
+	liveBlobatarStop = undefined;
 	sessionTitle.replaceChildren();
 	if (bot === undefined || sessionId === undefined) {
 		sessionTitle.textContent = "no session";
-		promptInput.placeholder = "Prompt";
 		return;
 	}
+	const blob = blobatarSvg(bot, "avatar title-blob", true);
+	liveBlobatarStop = blob.stop;
 	const name = document.createElement("span");
 	name.className = "title-name";
 	name.textContent = bot;
 	const id = document.createElement("span");
 	id.className = "title-id";
 	id.textContent = sessionId.slice(0, 8);
-	sessionTitle.append(avatar(bot), name, id);
-	promptInput.placeholder = `Message ${bot}`;
+	sessionTitle.append(blob.element, name, id);
 }
 
 async function fetchBots(): Promise<BotSummary[]> {
@@ -206,7 +234,7 @@ function renderBots(): void {
 		fresh.title = "new session";
 		fresh.onclick = () => void openBot(bot.name, true);
 
-		item.append(avatar(bot.name), meta, fresh);
+		item.append(blobatarSvg(bot.name, "avatar", false).element, meta, fresh);
 		fragment.append(item);
 	}
 	botList.replaceChildren(fragment);
@@ -214,8 +242,8 @@ function renderBots(): void {
 
 async function openBot(bot: string, fresh: boolean): Promise<void> {
 	await closeSession();
-	promptInput.disabled = true;
-	sendButton.disabled = true;
+	resetTranscript();
+	updateComposer();
 	setStatus("connecting", "busy");
 	try {
 		const summary = bots.find((candidate) => candidate.name === bot);
@@ -251,12 +279,13 @@ async function openBot(bot: string, fresh: boolean): Promise<void> {
 
 		active = { bot, sessionId, serverId, client, activated, ws, unsubscribe: () => {} };
 		setSessionTitle(bot, sessionId);
+		following = true;
 		active.unsubscribe = activated.transcript.state.subscribe((state) => {
 			// A late update from a previous bot must not clobber the current view.
 			if (active?.sessionId === openSessionId) renderTranscript(state.snapshot);
 		});
-		updateActions();
-		setStatus(snapshotIsRunning() ? "running" : "ready", snapshotIsRunning() ? "busy" : "idle");
+		renderTranscript(activated.transcript.state.value?.snapshot);
+		updateComposer();
 		renderBots();
 		promptInput.focus();
 		// The attach registered this session as the bot's last one.
@@ -293,16 +322,16 @@ async function closeSession(): Promise<void> {
 	active = undefined;
 	closing.unsubscribe();
 	closing.ws.close();
-	promptInput.disabled = true;
-	sendButton.disabled = true;
+	resetTranscript();
+	setSessionTitle();
+	updateComposer();
+	updateLatest();
 	updateActions();
 	try {
 		await closing.client.dispose();
 	} catch {
 		// the socket may already be gone
 	}
-	transcriptElement.replaceChildren();
-	setSessionTitle();
 }
 
 function snapshotIsRunning(): boolean {
@@ -311,9 +340,13 @@ function snapshotIsRunning(): boolean {
 
 // A snapshot operation is present while the lane is busy; status is "open"
 // when it can still be aborted and "aborting" once the abort was requested.
-function currentOperation(): { id: string; status: string } | undefined {
-	const operation = active?.activated.transcript.state.value?.snapshot?.operation;
+function currentOperation(): Operation | undefined {
+	const operation = currentSnapshot()?.operation;
 	return operation === null || operation === undefined ? undefined : operation;
+}
+
+function currentSnapshot(): TranscriptSnapshot | undefined {
+	return active?.activated.transcript.state.value?.snapshot as TranscriptSnapshot | null | undefined ?? undefined;
 }
 
 // Buttons only do what the lane can take: nothing while connecting, abort while
@@ -331,99 +364,414 @@ function updateActions(): void {
 	}
 }
 
-function renderTranscript(snapshot: TranscriptSnapshot | null | undefined): void {
-	if (snapshot === null || snapshot === undefined) {
-		setStatus("waiting for the transcript", "busy");
-		return;
-	}
-	const stick = isNearBottom();
-	const fragment = document.createDocumentFragment();
-	for (const entry of snapshot.transcript) {
-		const rendered = renderEntry(entry);
-		if (rendered !== undefined) fragment.append(rendered);
-	}
-	const streaming = snapshot.operation?.streamingMessage;
-	if (streaming !== undefined) fragment.append(renderMessage(streaming, true));
-	transcriptElement.replaceChildren(fragment);
-	if (stick) transcriptElement.scrollTop = transcriptElement.scrollHeight;
-	const running = snapshot.operation !== null && snapshot.operation !== undefined;
-	setStatus(running ? "running" : "ready", running ? "busy" : "idle");
-	sendButton.disabled = running;
-	promptInput.disabled = running;
-	updateActions();
+function updateComposer(): void {
+	const live = active !== undefined;
+	promptInput.disabled = !live;
+	sendButton.disabled = !live || promptInput.value.trim() === "";
+	promptInput.placeholder = !live ? "Select a bot" : snapshotIsRunning() ? "Steer the agent\u2026" : `Message ${active?.bot ?? ""}`;
+}
+
+function resetTranscript(): void {
+	renderedIds = [];
+	toolSteps.clear();
+	live = { shape: "" };
+	liveSlot.replaceChildren();
+	liveSlot.classList.remove("enter");
+	transcriptElement.replaceChildren(liveSlot);
+	transcriptElement.classList.add("empty");
+	latestButton.hidden = true;
+}
+
+function scrollToBottom(smooth: boolean): void {
+	transcriptElement.scrollTo({ top: transcriptElement.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+	following = true;
+	updateLatest();
 }
 
 function isNearBottom(): boolean {
 	return transcriptElement.scrollHeight - transcriptElement.scrollTop - transcriptElement.clientHeight < 80;
 }
 
+function updateLatest(): void {
+	latestButton.hidden = following || active === undefined;
+}
+
+function renderTranscript(snapshot: TranscriptSnapshot | null | undefined): void {
+	if (snapshot === null || snapshot === undefined) {
+		setStatus("waiting for the transcript", "busy");
+		return;
+	}
+	const stick = following;
+	const entries = snapshot.transcript;
+	const prefix =
+		entries.length >= renderedIds.length && renderedIds.every((id, index) => entries[index]?.id === id);
+	if (!prefix) {
+		renderedIds = [];
+		toolSteps.clear();
+		transcriptElement.replaceChildren(liveSlot);
+		const fragment = document.createDocumentFragment();
+		for (const entry of entries) {
+			const node = renderEntry(entry);
+			if (node !== undefined) fragment.append(node);
+		}
+		transcriptElement.insertBefore(fragment, liveSlot);
+	} else if (entries.length > renderedIds.length) {
+		const fragment = document.createDocumentFragment();
+		for (const entry of entries.slice(renderedIds.length)) {
+			const node = renderEntry(entry);
+			if (node !== undefined) {
+				node.classList.add("enter");
+				fragment.append(node);
+			}
+		}
+		transcriptElement.insertBefore(fragment, liveSlot);
+	}
+	renderedIds = entries.map((entry) => entry.id);
+	renderLive(snapshot);
+	transcriptElement.classList.toggle("empty", renderedIds.length === 0 && liveSlot.firstElementChild === null);
+	if (stick) scrollToBottom(false);
+	updateLatest();
+	const running = snapshot.operation !== null && snapshot.operation !== undefined;
+	if (sessionStatus.className !== "error") setStatus(running ? "running" : "ready", running ? "busy" : "idle");
+	updateComposer();
+	updateActions();
+}
+
 function renderEntry(entry: Entry): HTMLElement | undefined {
 	switch (entry.type) {
-		case "message":
-			return renderMessage(entry.message, false);
+		case "message": {
+			const message = entry.message;
+			if (message.role === "toolResult") {
+				const step = message.toolCallId === undefined ? undefined : toolSteps.get(message.toolCallId);
+				if (step !== undefined) {
+					attachResult(step, message);
+					return undefined;
+				}
+				return toolResultPanel(message);
+			}
+			return renderMessage(message);
+		}
 		case "compaction":
-			return collapsible("compaction", entry.summary);
+			return systemNote("compacted", entry.summary);
 		case "branch_summary":
-			return collapsible("branch summary", entry.summary);
+			return systemNote("branch summary", entry.summary);
 		case "custom":
-			return note(entry.customType, "");
+			return systemNote(entry.customType, "");
 		default:
 			return undefined;
 	}
 }
 
-function renderMessage(message: MessageLike, streaming: boolean): HTMLElement {
+function renderMessage(message: MessageLike, options: { register?: boolean } = {}): HTMLElement {
 	const article = document.createElement("article");
-	const classes = ["message", message.role];
-	if (message.isError === true || (message.stopReason !== undefined && message.stopReason === "error")) {
-		classes.push("error");
+	article.className = message.role === "user" ? "message user" : "message assistant";
+	if (message.isError === true || message.stopReason === "error") article.classList.add("error");
+
+	if (message.role === "user") {
+		const bubble = document.createElement("div");
+		bubble.className = "bubble";
+		bubble.textContent = textOf(message);
+		article.append(bubble);
+		return article;
 	}
-	if (streaming) classes.push("streaming");
-	article.className = classes.join(" ");
-
-	const role = document.createElement("div");
-	role.className = "role";
-	role.textContent = message.role === "toolResult" ? "tool result" : message.role;
-	article.append(role);
-
-	const content = Array.isArray(message.content) ? message.content : [];
-	for (const block of content) {
-		if (block.type === "text") {
-			const text = document.createElement("div");
-			text.className = "text";
-			text.textContent = block.text;
-			article.append(text);
-		} else if (block.type === "thinking") {
+	for (const block of messageBlocks(message)) {
+		if (block.type === "text" && block.text.trim() !== "") {
+			article.append(markdown(block.text));
+		} else if (block.type === "thinking" && block.thinking.trim() !== "") {
 			article.append(collapsible("thinking", block.thinking));
 		} else if (block.type === "toolCall") {
-			article.append(collapsible(`tool call: ${block.name}`, pretty(block.arguments)));
-		} else if (block.type === "image") {
-			article.append(note("image", ""));
+			article.append(toolStep(block, false, options.register !== false));
 		}
 	}
-	if (message.stopReason === "error" && message.errorMessage !== undefined) {
-		article.append(note("error", message.errorMessage));
-	}
+	if (message.stopReason === "error" && message.errorMessage !== undefined) article.append(note(message.errorMessage));
 	return article;
 }
 
-function collapsible(label: string, body: string): HTMLElement {
+/**
+ * The answer slot: what the model is writing right now, or a thinking line
+ * while it has not written anything yet.
+ */
+function renderLive(snapshot: TranscriptSnapshot): void {
+	const operation = snapshot.operation;
+	const queued = queuedMessages(snapshot);
+	const streaming = operation?.streamingMessage;
+	const running = (operation?.runningTools ?? []).filter((tool) => tool.status === "running");
+	const text = streaming === undefined ? "" : blockText(streaming, "text");
+	const thinking = streaming === undefined ? "" : blockText(streaming, "thinking");
+	const shape = JSON.stringify({
+		id: operation?.id ?? null,
+		status: operation?.status ?? null,
+		deferred: operation?.deferred !== undefined,
+		queued: queued.map((item) => item.entryId),
+		blocks: messageBlocks(streaming).map((block) => block.type),
+		running: running.map((tool) => tool.toolCallId),
+		streaming: streaming !== undefined,
+		hasText: text.trim() !== "",
+		hasThinking: thinking.trim() !== "",
+	});
+	if (shape === live.shape) {
+		// The same nodes, with a longer answer: update the text in place so the
+		// caret keeps blinking instead of restarting on every update.
+		if (live.text !== undefined && text !== live.text.source) {
+			live.text.source = text;
+			live.text.element.innerHTML = renderMarkdown(text);
+		}
+		if (live.thinking !== undefined && thinking !== live.thinking.source) {
+			live.thinking.source = thinking;
+			live.thinking.element.textContent = thinking;
+		}
+		return;
+	}
+	live = { shape };
+	const fragment = document.createDocumentFragment();
+	for (const item of queued) fragment.append(queuedMessage(item));
+	if (streaming !== undefined) {
+		const view = liveMessage(streaming, running, operation?.deferred !== undefined);
+		live.text = view.text;
+		live.thinking = view.thinking;
+		fragment.append(view.root);
+	} else if (running.length > 0) {
+		// Between messages the streaming slot is empty while tools run; the
+		// snapshot still carries them.
+		for (const tool of running) fragment.append(runningStep(tool));
+	} else if (operation !== null && operation !== undefined) {
+		fragment.append(thinkingLine(operation.deferred !== undefined));
+	}
+	liveSlot.replaceChildren(fragment);
+	if (liveSlot.firstElementChild !== null) liveSlot.classList.add("enter");
+}
+
+function liveMessage(
+	message: MessageLike,
+	running: RunningTool[],
+	deferred: boolean,
+): {
+	root: HTMLElement;
+	text?: { element: HTMLElement; source: string };
+	thinking?: { element: HTMLElement; source: string };
+} {
+	const root = document.createElement("article");
+	root.className = "message assistant streaming";
+	const text = blockText(message, "text");
+	const thinking = blockText(message, "thinking");
+	const steps: ToolCallBlock[] = messageBlocks(message).filter(isToolCall);
+	const runningIds = new Set(running.map((tool) => tool.toolCallId));
+	let textView: { element: HTMLElement; source: string } | undefined;
+	let thinkingView: { element: HTMLElement; source: string } | undefined;
+	if (text.trim() !== "") {
+		const element = markdown(text);
+		const cursor = document.createElement("span");
+		cursor.className = "cursor";
+		root.append(element, cursor);
+		textView = { element, source: text };
+		for (const block of steps) root.append(toolStep(block, runningIds.has(block.id), false));
+		if (thinking.trim() !== "") {
+			const details = collapsible("thinking", thinking);
+			root.append(details);
+			thinkingView = { element: details.querySelector("pre") as HTMLElement, source: thinking };
+		}
+	} else if (steps.length > 0 || running.length > 0) {
+		root.append(thinkingLine(deferred));
+		for (const block of steps) root.append(toolStep(block, runningIds.has(block.id), false));
+		for (const tool of running) {
+			if (steps.some((block) => block.id === tool.toolCallId)) continue;
+			root.append(runningStep(tool));
+		}
+		if (thinking.trim() !== "") {
+			const details = collapsible("thinking", thinking);
+			root.append(details);
+			thinkingView = { element: details.querySelector("pre") as HTMLElement, source: thinking };
+		}
+	} else {
+		root.append(thinkingLine(deferred));
+		if (thinking.trim() !== "") {
+			const details = collapsible("thinking", thinking);
+			root.append(details);
+			thinkingView = { element: details.querySelector("pre") as HTMLElement, source: thinking };
+		}
+	}
+	return { root, text: textView, thinking: thinkingView };
+}
+
+function toolStep(block: ToolCallBlock, running: boolean, register: boolean): HTMLDetailsElement {
 	const details = document.createElement("details");
+	details.className = running ? "step tool running" : "step tool";
 	const summary = document.createElement("summary");
-	summary.textContent = label;
+	summary.append(running ? spinner() : bullet());
+	const name = document.createElement("span");
+	name.className = "step-name";
+	name.textContent = block.name;
+	const text = document.createElement("span");
+	text.className = "step-text";
+	text.textContent = summarizeArgs(block.arguments) || "\u2026";
+	summary.append(name, text);
+	const args = document.createElement("pre");
+	args.className = "step-block args";
+	args.textContent = pretty(block.arguments);
+	details.append(summary, args);
+	if (register) toolSteps.set(block.id, details);
+	return details;
+}
+
+function runningStep(tool: RunningTool): HTMLDetailsElement {
+	const details = document.createElement("details");
+	details.className = "step tool running";
+	const summary = document.createElement("summary");
+	const name = document.createElement("span");
+	name.className = "step-name";
+	name.textContent = tool.toolName;
+	const text = document.createElement("span");
+	text.className = "step-text";
+	text.textContent = summarizeArgs(tool.args) || "\u2026";
+	summary.append(spinner(), name, text);
+	details.append(summary);
+	return details;
+}
+
+function attachResult(step: HTMLDetailsElement, message: MessageLike): void {
+	if (message.isError === true) step.classList.add("failed");
 	const pre = document.createElement("pre");
+	pre.className = "step-block result";
+	pre.textContent = textOf(message).trim() || "(no output)";
+	step.append(pre);
+}
+
+function toolResultPanel(message: MessageLike): HTMLElement {
+	const article = document.createElement("article");
+	article.className = message.isError === true ? "message toolResult error" : "message toolResult";
+	const label = document.createElement("div");
+	label.className = "tool-label";
+	label.textContent = message.isError === true ? "tool error" : "tool result";
+	const pre = document.createElement("pre");
+	pre.className = "step-block result";
+	pre.textContent = textOf(message).trim() || "(no output)";
+	article.append(label, pre);
+	return article;
+}
+
+function queuedMessage(item: QueuedItem): HTMLElement {
+	const article = document.createElement("article");
+	article.className = "message user queued";
+	const bubble = document.createElement("div");
+	bubble.className = "bubble";
+	bubble.textContent = textOf(item.message ?? { role: "user" });
+	const tag = document.createElement("span");
+	tag.className = "tag";
+	tag.textContent = item.kind === "steer" ? "steering" : "queued";
+	bubble.append(tag);
+	article.append(bubble);
+	return article;
+}
+
+function thinkingLine(deferred: boolean): HTMLElement {
+	const line = document.createElement("div");
+	line.className = "thinking";
+	line.append(document.createTextNode(deferred ? "deferred" : "thinking"));
+	const dots = document.createElement("span");
+	dots.className = "dots";
+	for (let index = 0; index < 3; index += 1) dots.append(document.createElement("i"));
+	line.append(dots);
+	return line;
+}
+
+function spinner(): HTMLElement {
+	const element = document.createElement("span");
+	element.className = "spinner";
+	element.setAttribute("aria-hidden", "true");
+	return element;
+}
+
+function bullet(): HTMLElement {
+	const element = document.createElement("span");
+	element.className = "step-bullet";
+	element.textContent = "\u2022";
+	element.setAttribute("aria-hidden", "true");
+	return element;
+}
+
+function markdown(source: string): HTMLElement {
+	const element = document.createElement("div");
+	element.className = "text markdown";
+	element.innerHTML = renderMarkdown(source);
+	return element;
+}
+
+function collapsible(label: string, body: string): HTMLDetailsElement {
+	const details = document.createElement("details");
+	details.className = "step thinking-step";
+	const summary = document.createElement("summary");
+	summary.append(bullet());
+	const name = document.createElement("span");
+	name.className = "step-name";
+	name.textContent = label;
+	summary.append(name);
+	const pre = document.createElement("pre");
+	pre.className = "step-block";
 	pre.textContent = body;
 	details.append(summary, pre);
 	return details;
 }
 
-function note(label: string, body: string): HTMLElement {
-	const aside = document.createElement("div");
+function systemNote(label: string, summary: string): HTMLElement {
+	const aside = document.createElement("details");
 	aside.className = "note";
-	const strong = document.createElement("strong");
-	strong.textContent = label;
-	aside.append(strong, body === "" ? "" : ` ${body}`);
+	const head = document.createElement("summary");
+	head.textContent = label;
+	aside.append(head);
+	if (summary !== "") {
+		const body = document.createElement("pre");
+		body.className = "step-block";
+		body.textContent = summary;
+		aside.append(body);
+	}
 	return aside;
+}
+
+function note(text: string): HTMLElement {
+	const aside = document.createElement("div");
+	aside.className = "note error-note";
+	aside.textContent = text;
+	return aside;
+}
+
+function queuedMessages(snapshot: TranscriptSnapshot): QueuedItem[] {
+	return (snapshot.queues ?? []).filter(
+		(item) => item.type === "message" && (item.kind === "steer" || item.kind === "followUp"),
+	);
+}
+
+function messageBlocks(message: MessageLike | undefined): ContentBlock[] {
+	return message !== undefined && Array.isArray(message.content) ? message.content : [];
+}
+
+function isToolCall(block: ContentBlock): block is ToolCallBlock {
+	return block.type === "toolCall";
+}
+
+function blockText(message: MessageLike, type: "text" | "thinking"): string {
+	const parts: string[] = [];
+	for (const block of messageBlocks(message)) {
+		if (type === "text" && block.type === "text") parts.push(block.text);
+		else if (type === "thinking" && block.type === "thinking") parts.push(block.thinking);
+	}
+	return parts.join(type === "text" ? "\n" : "\n\n");
+}
+
+function textOf(message: MessageLike): string {
+	return blockText(message, "text");
+}
+
+/** One line of a tool call, in the CLI's `bash: ls -la` shape. */
+function summarizeArgs(args: unknown): string {
+	if (args === null || typeof args !== "object") return typeof args === "string" ? singleLine(args) : "";
+	const record = args as Record<string, unknown>;
+	const first = record.command ?? record.path ?? record.pattern ?? record.query ?? Object.values(record)[0];
+	return typeof first === "string" ? singleLine(first) : "";
+}
+
+function singleLine(text: string, max = 100): string {
+	const line = text.split("\n").find((part) => part.trim() !== "")?.trim() ?? "";
+	return line.length > max ? `${line.slice(0, max)}\u2026` : line;
 }
 
 function pretty(value: unknown): string {
@@ -439,20 +787,59 @@ function message(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+function autogrow(): void {
+	promptInput.style.height = "auto";
+	promptInput.style.height = `${Math.min(promptInput.scrollHeight, 200)}px`;
+}
+
+/** Text still in the lane queues, handed back to the composer on abort. */
+function restoreQueued(): void {
+	const snapshot = currentSnapshot();
+	const dropped = queuedMessages(snapshot ?? ({ transcript: [], operation: null } as TranscriptSnapshot))
+		.map((item) => textOf(item.message ?? { role: "user" }).trim())
+		.filter((text) => text !== "");
+	if (dropped.length === 0) return;
+	const text = dropped.join("\n\n");
+	promptInput.value = promptInput.value.trim() === "" ? text : `${text}\n\n${promptInput.value}`;
+	autogrow();
+	updateComposer();
+}
+
 promptForm.addEventListener("submit", (event) => {
 	event.preventDefault();
 	const text = promptInput.value.trim();
-	if (text === "" || active === undefined) return;
+	const session = active;
+	if (text === "" || session === undefined) return;
+	const request = { message: text, images: null };
 	promptInput.value = "";
-	sendButton.disabled = true;
-	promptInput.disabled = true;
-	setStatus("running", "busy");
-	void active.activated.agent.prompt({ message: text, images: null }, BACKGROUND_CONTEXT).then(
+	autogrow();
+	updateComposer();
+	scrollToBottom(true);
+	// While a turn runs the message steers it; otherwise it starts a turn.
+	const call = snapshotIsRunning()
+		? session.activated.agent.steer(request, BACKGROUND_CONTEXT)
+		: session.activated.agent.prompt(request, BACKGROUND_CONTEXT);
+	void call.then(
 		(response) => {
-			if (!response.accepted) setStatus(response.error.message, "error");
+			if (response.accepted) {
+				updateComposer();
+				return;
+			}
+			promptInput.value = text;
+			setStatus(response.error.message, "error");
+			updateComposer();
 		},
-		(error: unknown) => setStatus(message(error), "error"),
+		(error: unknown) => {
+			promptInput.value = text;
+			setStatus(message(error), "error");
+			updateComposer();
+		},
 	);
+});
+
+promptInput.addEventListener("input", () => {
+	autogrow();
+	updateComposer();
 });
 
 promptInput.addEventListener("keydown", (event) => {
@@ -462,6 +849,12 @@ promptInput.addEventListener("keydown", (event) => {
 	}
 });
 
+transcriptElement.addEventListener("scroll", () => {
+	following = isNearBottom();
+	updateLatest();
+});
+
+latestButton.addEventListener("click", () => scrollToBottom(true));
 refreshButton.addEventListener("click", () => void refreshBots());
 window.addEventListener("focus", () => void refreshBots());
 
@@ -469,6 +862,7 @@ stopButton.addEventListener("click", () => {
 	const session = active;
 	const operation = currentOperation();
 	if (session === undefined || operation === undefined) return;
+	restoreQueued();
 	stopButton.disabled = true;
 	setStatus("aborting", "busy");
 	void session.activated.agent.requestAbort(operation.id, BACKGROUND_CONTEXT).catch((error: unknown) => {
@@ -484,13 +878,12 @@ compactButton.addEventListener("click", () => {
 	setStatus("compacting", "busy");
 	void session.activated.agent.compact({ customInstructions: null }, BACKGROUND_CONTEXT).then(
 		(response) => {
-			if (!response.accepted) {
-				setStatus(response.error.message, "error");
-				updateActions();
-			} else if (response.error !== null) {
-				setStatus(response.error.message, "error");
-				updateActions();
+			if (!response.accepted || response.error !== null) {
+				setStatus(response.error?.message ?? "compact failed", "error");
+			} else if (sessionStatus.className === "error") {
+				setStatus("ready", "idle");
 			}
+			updateActions();
 		},
 		(error: unknown) => {
 			setStatus(message(error), "error");

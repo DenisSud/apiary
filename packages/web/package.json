@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@earendil-works/chord": "0.87.1",
-    "@earendil-works/pi-client": "0.87.1"
+    "@earendil-works/pi-client": "0.87.1",
+    "blobatar": "2.7.0",
+    "marked": "18.0.11"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

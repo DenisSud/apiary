@@ -185,7 +185,7 @@ test("reports a missing web build instead of failing", async () => {
   try {
     const response = await fetch(`http://127.0.0.1:${bridge.port}/`);
     assert.equal(response.status, 503);
-    assert.match(await response.text(), /npm run build -w packages\/web/);
+    assert.match(await response.text(), /bun run build/);
   } finally {
     await bridge.close();
   }

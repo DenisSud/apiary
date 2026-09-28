@@ -81,11 +81,14 @@ cat > "$bot_dir/package.json" <<EOF
 }
 EOF
 
-if command -v npm >/dev/null 2>&1; then
+if command -v bun >/dev/null 2>&1; then
+  (cd "$bot_dir" && bun install --silent >/dev/null 2>&1) \
+    || echo "pi-bot-new: bun install failed (extensions importing 'pi-bots/...' will not resolve)" >&2
+elif command -v npm >/dev/null 2>&1; then
   (cd "$bot_dir" && npm install --no-audit --no-fund --silent >/dev/null 2>&1) \
     || echo "pi-bot-new: npm install failed (extensions importing 'pi-bots/...' will not resolve)" >&2
 else
-  echo "pi-bot-new: npm not found — skipping install" >&2
+  echo "pi-bot-new: no bun or npm found — skipping install" >&2
 fi
 
 # ── shared plumbing (symlinks) ───────────────────────────────────────

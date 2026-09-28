@@ -87,7 +87,7 @@ function serveStatic(
   pathname: string,
 ): void {
   if (!existsSync(webDir)) {
-    sendText(response, 503, "web app not built: run `npm run build -w packages/web`\n");
+    sendText(response, 503, "web app not built: run `bun run build` from the repo root\n");
     return;
   }
   const relative = decodeURIComponent(pathname).replace(/^\/+/, "");

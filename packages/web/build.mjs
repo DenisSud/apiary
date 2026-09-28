@@ -47,4 +47,7 @@ await build({
 
 cpSync(join(packageDir, "src", "index.html"), join(outDir, "index.html"));
 cpSync(join(packageDir, "src", "style.css"), join(outDir, "style.css"));
+const blobatar = join(repoRoot, "node_modules", "blobatar", "dist");
+cpSync(join(blobatar, "motion.css"), join(outDir, "blobatar-motion.css"));
+cpSync(join(blobatar, "gaze.css"), join(outDir, "blobatar-gaze.css"));
 console.log(`built ${outDir}`);
