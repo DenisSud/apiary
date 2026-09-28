@@ -1,15 +1,18 @@
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveAttach, runClient } from "./launcher.ts";
+import { resolveAttach, runClient, stopServer } from "./launcher.ts";
 import { listBots } from "./registry.ts";
 
 const USAGE = `usage:
-  pi-bot attach <bot> [--new]   attach to a bot (starts its server if needed)
-  pi-bot resolve <bot> [--new]  ensure the server and resolve the session
-  pi-bot list                   list bots
-  pi-bot new <name>             scaffold a new bot
-  pi-bot <bot> [--new]          same as attach
+  pi-bot attach <bot> [--new]             attach to a bot (starts its server if needed)
+  pi-bot message <bot> <text...> [--new]  send a prompt and print the reply
+  pi-bot compact <bot> [--new]            compact the bot's session
+  pi-bot stop <bot>                       stop the bot's server
+  pi-bot resolve <bot> [--new]            ensure the server and resolve the session
+  pi-bot list                             list bots
+  pi-bot new <name>                       scaffold a new bot
+  pi-bot <bot> [--new]                    same as attach
 `;
 
 function parseBotArgs(args: string[]): { name: string; fresh: boolean } {
@@ -56,6 +59,31 @@ function commandNew(args: string[]): number {
   return result.status ?? 1;
 }
 
+async function commandCompact(args: string[]): Promise<number> {
+  const { name, fresh } = parseBotArgs(args);
+  const target = await resolveAttach(name, { new: fresh });
+  return runClient(target, ["--compact"]);
+}
+
+async function commandMessage(args: string[]): Promise<number> {
+  const fresh = args.includes("--new");
+  const rest = args.filter((arg) => arg !== "--new");
+  const name = rest[0];
+  if (name === undefined) throw new Error("missing bot name");
+  const text = rest.slice(1).join(" ");
+  if (text.length === 0) throw new Error("missing message text");
+  const target = await resolveAttach(name, { new: fresh });
+  // "--" forces the text to be read as the prompt even if it starts with "-".
+  return runClient(target, ["--", text]);
+}
+
+async function commandStop(args: string[]): Promise<number> {
+  const { name } = parseBotArgs(args);
+  const result = await stopServer(name);
+  console.log(result.stopped ? `stopped ${name} (pid ${result.pid})` : `${name} not running`);
+  return 0;
+}
+
 async function main(args: string[]): Promise<number> {
   const first = args[0];
   if (first === undefined) {
@@ -71,6 +99,12 @@ async function main(args: string[]): Promise<number> {
       return commandNew(args.slice(1));
     case "attach":
       return commandAttach(args.slice(1));
+    case "message":
+      return commandMessage(args.slice(1));
+    case "compact":
+      return commandCompact(args.slice(1));
+    case "stop":
+      return commandStop(args.slice(1));
     case "resolve":
       return commandResolve(args.slice(1));
     default:

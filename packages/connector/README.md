@@ -119,6 +119,9 @@ points `PI_CONNECTOR_DIR` and `PI_BOTS_HOME` at a temp dir.
 
 ```
 pi-bot attach <bot> [--new]   ensure server, resolve session, run the client
+pi-bot message <bot> <text...> [--new]  send a prompt, print the reply
+pi-bot compact <bot> [--new]            compact the bot's session
+pi-bot stop <bot>                       stop the bot's server
 pi-bot resolve <bot> [--new]  ensure server, print the ref (for the S3 fork)
 pi-bot list
 pi-bot new <name>
@@ -189,6 +192,26 @@ across spawn and readiness.
 
 `resolve` prints `<bot>\t<sessionId>\t<socketPath>`, or those refs as JSON with
 `--json`.
+
+### message, compact, stop (S2b)
+
+`message <bot> <text...>` runs the client headless with the text as the prompt
+(the CLI's own rule: a prompt forces headless, no prompt plus a TTY runs the
+TUI). It streams `text_delta` output to stdout and exits with the client's
+status; `--new` picks a fresh session first. The text is passed after `--`, so
+it may start with `-`.
+
+`compact <bot>` runs the same headless client with `--compact`, which is our
+first fork patch (`585a74804` on the fork's `dev` branch): attach, call
+`AgentController.compact` with no custom instructions, print
+`<serverId>\t<sessionId>\tcompacted`.
+
+`stop <bot>` reads the route, verifies with `/proc/<pid>/environ` that the pid
+still belongs to this bot's server (`PI_SERVER_DIR` and `PI_CODING_AGENT_DIR`
+match), sends SIGTERM, escalates to SIGKILL after 3 s, then clears the route.
+The server rewrites its process title to `pi`, so `cmdline` is useless for the
+identity check; the environment is not, which also protects against a recycled
+pid.
 
 ### Files
 

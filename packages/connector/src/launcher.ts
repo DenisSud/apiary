@@ -9,7 +9,7 @@ import { createUnixTransportFactory } from "@earendil-works/pi-client/unix";
 import { getUnixSocketPath } from "@earendil-works/pi-server/unix";
 import { acquireLock } from "./lock.ts";
 import { botsHome, isValidBotName, lockPath, logPath, serverDir, sourceDir } from "./paths.ts";
-import { readRoute, writeRoute } from "./registry.ts";
+import { clearRoute, readRoute, writeRoute } from "./registry.ts";
 import { newSessionId, readSession, recordAttached } from "./sessions.ts";
 
 // The launcher owns the process boundary: it ensures a bot's server is up and
@@ -105,14 +105,62 @@ export async function resolveAttach(name: string, options: { new?: boolean } = {
 }
 
 /** Run the experimental client for the target, inheriting the terminal. */
-export function runClient(target: AttachTarget): number {
+export function runClient(target: AttachTarget, args: readonly string[] = []): number {
   const result = spawnSync(
     join(sourceDir(), "pi-test.sh"),
-    ["client", "--connect", `unix://${target.socketPath}`, "--session-id", target.sessionId],
+    ["client", "--connect", `unix://${target.socketPath}`, "--session-id", target.sessionId, ...args],
     { stdio: "inherit", env: botEnv(target.bot, target.dir) },
   );
   if (result.error) throw result.error;
   return result.status ?? 1;
+}
+
+/**
+ * Stop the bot's server. The route pid is only signalled after checking it is
+ * still our server process (via /proc cmdline), so a recycled pid is safe.
+ */
+export async function stopServer(name: string): Promise<{ stopped: boolean; pid?: number }> {
+  const route = readRoute(name);
+  if (route === undefined) return { stopped: false };
+  const pid = route.pid;
+  let stopped = false;
+  if (pid !== undefined && isOurServer(pid, name)) {
+    try {
+      process.kill(pid, "SIGTERM");
+      stopped = true;
+    } catch {
+      // already gone
+    }
+    const deadline = Date.now() + 3_000;
+    while (stopped && isAlive(pid) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (stopped && isAlive(pid)) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+  }
+  clearRoute(name);
+  return { stopped, pid };
+}
+
+// The server rewrites its process title to "pi", so cmdline says nothing.
+// The environment is untouched: match the per-bot PI_SERVER_DIR and agent dir
+// so a recycled pid is never signalled.
+function isOurServer(pid: number, name: string): boolean {
+  if (!isAlive(pid)) return false;
+  try {
+    const env = readFileSync(`/proc/${pid}/environ`, "utf8").split("\0");
+    return (
+      env.includes(`PI_SERVER_DIR=${serverDir(name)}`) &&
+      env.includes(`PI_CODING_AGENT_DIR=${join(botsHome(), name)}`)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function spawnServer({ name, dir, serverId }: { name: string; dir: string; serverId: string }): number {
