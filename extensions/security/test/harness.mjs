@@ -390,6 +390,13 @@ test("bash override: stock behavior preserved without `secrets`", async () => {
 	assert(result.content[0].text === "plain ok", `output: ${JSON.stringify(result.content[0].text)}`);
 });
 
+test("bash override: a spelled-out empty profile runs the plain command", async () => {
+	for (const secrets of [null, "", "null", "undefined"]) {
+		const result = await runBash({ command: "printf 'plain ok'", secrets });
+		assert(result.content[0].text === "plain ok", `secrets=${JSON.stringify(secrets)}: ${JSON.stringify(result.content[0].text)}`);
+	}
+});
+
 test("bash override: description and guidelines carry the contract", () => {
 	assertMatch(bashTool.description, /secrets: "<profile>"/, "description mentions secrets param");
 	assertMatch(bashTool.description, /«redacted:NAME»/, "description mentions marker");

@@ -165,7 +165,7 @@ export default function security(pi: ExtensionAPI) {
 	const bashParameters = Type.Object({
 		...proto.parameters.properties,
 		secrets: Type.Optional(
-			Type.String({
+			Type.Union([Type.String(), Type.Null()], {
 				description: `Secrets profile name (available: ${profileNames.length > 0 ? profileNames.join(", ") : "none"}). Injects that profile's credentials as environment variables for this command; reference them as $NAME.`,
 			}),
 		),
@@ -184,9 +184,13 @@ export default function security(pi: ExtensionAPI) {
 		],
 		parameters: bashParameters,
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			const { secrets, ...rest } = params as { secrets?: string; command: string; timeout?: number };
+			const { secrets, ...rest } = params as { secrets?: string | null; command: string; timeout?: number };
 			const stock = createBashToolDefinition(ctx.cwd);
-			if (!secrets) return stock.execute(toolCallId, rest as never, signal, onUpdate, ctx);
+			// Models sometimes spell "no profile" as null, "", or the string "null".
+			// Treat all of them as the plain command rather than a failed lookup.
+			if (secrets === null || secrets === undefined || secrets === "" || secrets === "null" || secrets === "undefined") {
+				return stock.execute(toolCallId, rest as never, signal, onUpdate, ctx);
+			}
 
 			const env = await resolveProfile(getConfig(), secrets);
 			redactor.addEnv(env);
