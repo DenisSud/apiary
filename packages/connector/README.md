@@ -287,8 +287,8 @@ passes `PI_BOT_NAME` / `PI_BOT_BIN`. No new state, no new policy.
 
 ## Web client (S4)
 
-Status: planned. This is the first client that shares the backend with the TUI
-instead of forking it.
+Status: M4.1 done (`b02298c`); M4.2 (browser app) is next. This is the first
+client that shares the backend with the TUI instead of forking it.
 
 ### Shape
 
@@ -300,23 +300,32 @@ pi-client + WebSocket byte transport   opaque byte relay + static files
 - The wire format is framed CBOR over an ordered byte stream
   (`ByteTransport` in `pi-client`). The bridge never parses it: one browser
   WebSocket carries one session's byte stream, chunks pass through unchanged.
-- Bridge (`packages/connector/src/bridge.ts`, own bin, no new verb on
-  `pi-bot`):
-  - serves the built browser app (same origin, no CORS);
-  - `GET /api/bots` reads `routes/*.json` + `sessions/*.json` and calls
-    `ensureServer` from S2, so opening a stopped bot starts it;
-  - `GET /ws?bot=<name>&session=<id>` upgrades, resolves the route, dials the
-    unix socket, and pumps bytes both ways.
+- One process serves the app and the relay, so M4.2 gets a single origin and
+  no CORS. Static serving lands with the app.
 - Browser app (`packages/web`): plain TS, one esbuild bundle (esbuild 0.28 is
   already in the tree via chord). `createWebSocketTransportFactory(url)`
   implements `ByteTransportFactory` (binary frames, ordered sends,
   `onData`/`onClose`/`onError`); `Client.connect` then uses the same call set
   as `client-tui.ts` for transcript, prompt, compact, stop.
 
+### Bridge
+
+`bin/pi-bots-web [--host <host>] [--port <port>]` (default `127.0.0.1:8787`).
+
+- `GET /api/bots` → `{bots: [{name, dir, running, serverId, pid, startedAt,
+  lastSession}]}`. Reads the state files only; it never starts a server.
+- `GET /ws?bot=<name>[&session=<uuid>]` → 101 upgrade, then the bot server's
+  byte stream. Resolving the target runs the launcher, so a stopped bot gets
+  started. Rejections: 400 invalid bot or session, 502 launcher failure.
+- Text frames close the channel; the transport carries bytes only.
+- Backpressure: the upstream socket pauses while a ws frame is buffered and
+  resumes from the send callback; the ws reader pauses while the unix socket
+  write buffer is full.
+
 ### Milestones
 
-- M4.1 bridge: bot list + WS relay; verified with a Node script that speaks
-  the transport, no browser.
+- M4.1 bridge (done): bot list + WS relay; unit tests with a fake upstream and
+  one live prompt through the bridge to a real bot.
 - M4.2 app: bot picker, open session, prompt, streamed transcript.
 - M4.3 verbs in the UI (stop, compact, new session) and a running indicator.
 
