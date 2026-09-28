@@ -203,6 +203,7 @@ function botEnv(name: string, dir: string): NodeJS.ProcessEnv {
     PI_CODING_AGENT_DIR: dir,
     PI_MEMORY_DIR: join(dir, "memory"),
     PI_SERVER_DIR: serverDir(name),
+    PI_BOT_NAME: name,
   };
 }
 

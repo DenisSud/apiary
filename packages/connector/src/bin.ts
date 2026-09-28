@@ -4,13 +4,17 @@ import { fileURLToPath } from "node:url";
 import { resolveAttach, runClient, stopServer } from "./launcher.ts";
 import { listBots } from "./registry.ts";
 
+const BIN_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin");
+// The fork's /bot and /new call back into this CLI; tell it where we are.
+process.env.PI_BOT_BIN ??= join(BIN_DIR, "pi-bot");
+
 const USAGE = `usage:
   pi-bot attach <bot> [--new]             attach to a bot (starts its server if needed)
   pi-bot message <bot> <text...> [--new]  send a prompt and print the reply
   pi-bot compact <bot> [--new]            compact the bot's session
   pi-bot stop <bot>                       stop the bot's server
   pi-bot resolve <bot> [--new]            ensure the server and resolve the session
-  pi-bot list                             list bots
+  pi-bot list [--json]                    list bots (JSON for the TUI picker)
   pi-bot new <name>                       scaffold a new bot
   pi-bot <bot> [--new]                    same as attach
 `;
@@ -41,6 +45,7 @@ async function commandResolve(args: string[]): Promise<number> {
     console.log(
       JSON.stringify({
         bot: target.bot,
+        dir: target.dir,
         serverId: target.serverId,
         socketPath: target.socketPath,
         sessionId: target.sessionId,
@@ -53,7 +58,7 @@ async function commandResolve(args: string[]): Promise<number> {
 }
 
 function commandNew(args: string[]): number {
-  const script = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "pi-bot-new");
+  const script = join(BIN_DIR, "pi-bot-new");
   const result = spawnSync(script, args, { stdio: "inherit" });
   if (result.error) throw result.error;
   return result.status ?? 1;
@@ -92,7 +97,9 @@ async function main(args: string[]): Promise<number> {
   }
   switch (first) {
     case "list": {
-      for (const bot of listBots()) console.log(bot.name);
+      const bots = listBots();
+      if (args.includes("--json")) console.log(JSON.stringify(bots));
+      else for (const bot of bots) console.log(bot.name);
       return 0;
     }
     case "new":

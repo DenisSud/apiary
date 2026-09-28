@@ -123,7 +123,7 @@ pi-bot message <bot> <text...> [--new]  send a prompt, print the reply
 pi-bot compact <bot> [--new]            compact the bot's session
 pi-bot stop <bot>                       stop the bot's server
 pi-bot resolve <bot> [--new]  ensure server, print the ref (for the S3 fork)
-pi-bot list
+pi-bot list [--json]          list bots (JSON for the TUI picker)
 pi-bot new <name>
 pi-bot <bot> [--new]          sugar for attach
 ```
@@ -190,8 +190,8 @@ across spawn and readiness.
 <checkout>/pi-test.sh client --connect unix://<socket> --session-id <id>
 ```
 
-`resolve` prints `<bot>\t<sessionId>\t<socketPath>`, or those refs as JSON with
-`--json`.
+`resolve` prints `<bot>\t<sessionId>\t<socketPath>`, or `{ bot, dir, serverId,
+socketPath, sessionId }` as JSON with `--json`.
 
 ### Launcher files
 
@@ -238,8 +238,10 @@ run TUI ──switch target──> dispose runtime ──> open runtime for targ
 
 Each iteration stops the TUI, disposes the client runtime and facets, and calls
 `runClientTui` again with a rewritten command (`--connect unix://<socket>`,
-`--session-id <id>`). No process exec, no process chain, and the teardown path is
-the one the TUI already uses when the user quits.
+`--session-id <id>`). The loop also rewrites `PI_BOT_NAME`, `PI_CODING_AGENT_DIR`,
+`PI_MEMORY_DIR`, and `PI_SERVER_DIR` for the new bot, so the next TUI reads the
+right settings, theme, and agent dir. No process exec, no process chain, and the
+teardown path is the one the TUI already uses when the user quits.
 
 A switch target comes from `pi-bot resolve --json [--new] <bot>` — the same
 process boundary the launcher uses, so the fork never reads the state files or
