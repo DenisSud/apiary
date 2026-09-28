@@ -287,8 +287,8 @@ passes `PI_BOT_NAME` / `PI_BOT_BIN`. No new state, no new policy.
 
 ## Web client (S4)
 
-Status: M4.1 done (`b02298c`); M4.2 (browser app) is next. This is the first
-client that shares the backend with the TUI instead of forking it.
+Status: M4.1 and M4.2 done (`b02298c`, `ae3fd35`); M4.3 is next. This is the
+first client that shares the backend with the TUI instead of forking it.
 
 ### Shape
 
@@ -300,33 +300,54 @@ pi-client + WebSocket byte transport   opaque byte relay + static files
 - The wire format is framed CBOR over an ordered byte stream
   (`ByteTransport` in `pi-client`). The bridge never parses it: one browser
   WebSocket carries one session's byte stream, chunks pass through unchanged.
-- One process serves the app and the relay, so M4.2 gets a single origin and
-  no CORS. Static serving lands with the app.
-- Browser app (`packages/web`): plain TS, one esbuild bundle (esbuild 0.28 is
-  already in the tree via chord). `createWebSocketTransportFactory(url)`
-  implements `ByteTransportFactory` (binary frames, ordered sends,
-  `onData`/`onClose`/`onError`); `Client.connect` then uses the same call set
-  as `client-tui.ts` for transcript, prompt, compact, stop.
+- One process serves the app and the relay, so the browser gets a single
+  origin and no CORS.
+- Browser app (`packages/web`): plain TS, one esbuild bundle. It imports the
+  coding-agent service facades through `@pi/fork/experimental/services/*`,
+  which `build.mjs` maps to the pi checkout; the pi packages map to the built
+  copies this repo depends on. One WebSocket per session is wrapped as a
+  `ByteTransportFactory` (binary frames, `onData`/`onClose`/`onError`).
 
 ### Bridge
 
-`bin/pi-bots-web [--host <host>] [--port <port>]` (default `127.0.0.1:8787`).
+`bin/pi-bots-web [--host <host>] [--port <port>] [--web-dir <path>]`
+(default `127.0.0.1:8787`, web root `packages/web/dist`).
 
 - `GET /api/bots` → `{bots: [{name, dir, running, serverId, pid, startedAt,
   lastSession}]}`. Reads the state files only; it never starts a server.
 - `GET /ws?bot=<name>[&session=<uuid>]` → 101 upgrade, then the bot server's
   byte stream. Resolving the target runs the launcher, so a stopped bot gets
   started. Rejections: 400 invalid bot or session, 502 launcher failure.
+- Static files under the web root; path escapes are rejected, and a missing
+  build answers 503 with the build command.
 - Text frames close the channel; the transport carries bytes only.
 - Backpressure: the upstream socket pauses while a ws frame is buffered and
   resumes from the send callback; the ws reader pauses while the unix socket
   write buffer is full.
 
+### App
+
+```
+npm run build -w packages/web    # bundle to packages/web/dist
+bin/pi-bots-web                  # serve app, /api/bots, and /ws
+```
+
+The app lists bots (running dot from the route file), opens the last session
+or a new one, renders the replicated transcript (user/assistant text,
+collapsible thinking and tool calls, tool results, compaction notes), and
+sends prompts through AgentController. The prompt stays disabled until the
+session is attached and hydrated. Rendering reads the snapshot on every
+replicated update, so streaming comes for free.
+
+Known gaps: no stop/compact/new-session buttons (M4.3), no reconnect, plain
+text output only.
+
 ### Milestones
 
 - M4.1 bridge (done): bot list + WS relay; unit tests with a fake upstream and
   one live prompt through the bridge to a real bot.
-- M4.2 app: bot picker, open session, prompt, streamed transcript.
+- M4.2 app (done): bot picker, session open, prompt, streamed transcript;
+  verified in Chromium against a real bot.
 - M4.3 verbs in the UI (stop, compact, new session) and a running indicator.
 
 ### Out of scope (M5)
@@ -335,8 +356,9 @@ Auth, remote access (Radius relay), reconnect/replay, systemd units.
 
 ### Open questions
 
-- Browser smoke test: Playwright on NixOS needs the nixpkgs chromium and an
-  explicit `executablePath`; do it only if manual checks stop being enough.
+- Browser smoke test: a Chromium smoke script exists outside the repo
+  (nixpkgs chromium + playwright-core, `CHROMIUM_PATH`); promote it here if
+  M4.3 changes need regression.
 - Typed Chord service bindings in the browser vs a JSON convenience API on
-  the bridge. Prefer the bindings; fall back only if the bundle fights us.
+  the bridge. Settled: bindings, bundled from the fork source.
 - `bots.yaml` descriptions are still unread; the UI may want them here.
