@@ -12,6 +12,14 @@ export function newSessionId(): string {
   return randomUUID();
 }
 
+// Session ids become filenames and protocol addresses, so validate the shape
+// before anything writes or dials with them.
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidSessionId(id: string): boolean {
+  return SESSION_ID.test(id);
+}
+
 export function readSession(name: string): SessionRef | undefined {
   const raw = readJsonFile<Partial<SessionRef>>(sessionPath(name));
   if (!raw || typeof raw.serverId !== "string" || typeof raw.sessionId !== "string") {

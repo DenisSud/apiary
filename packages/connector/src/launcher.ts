@@ -10,7 +10,7 @@ import { getUnixSocketPath } from "@earendil-works/pi-server/unix";
 import { acquireLock } from "./lock.ts";
 import { botsHome, isValidBotName, lockPath, logPath, serverDir, sourceDir } from "./paths.ts";
 import { clearRoute, readRoute, writeRoute } from "./registry.ts";
-import { newSessionId, readSession, recordAttached } from "./sessions.ts";
+import { isValidSessionId, newSessionId, readSession, recordAttached } from "./sessions.ts";
 
 // The launcher owns the process boundary: it ensures a bot's server is up and
 // resolves which session a client should attach to. All decisions about state
@@ -84,7 +84,8 @@ export async function ensureServer(name: string): Promise<ServerHandle> {
     // Route before spawn: a concurrent launcher sees a pending route and waits
     // for the socket instead of spawning a second server under a new id.
     writeRoute(name, { serverId, socketPath, startedAt: new Date().toISOString() });
-    const pid = spawnServer({ name, dir, serverId });    await waitReady({ name, socketPath, serverId, pid });
+    const pid = spawnServer({ name, dir, serverId });
+    await waitReady({ name, socketPath, serverId, pid });
     writeRoute(name, { serverId, socketPath, pid, startedAt: new Date().toISOString() });
     return { serverId, socketPath, pid, started: true };
   } finally {
@@ -92,12 +93,18 @@ export async function ensureServer(name: string): Promise<ServerHandle> {
   }
 }
 
-/** Ensure the server, then pick the bot's default session (last attached). */
-export async function resolveAttach(name: string, options: { new?: boolean } = {}): Promise<AttachTarget> {
+/** Ensure the server, then pick the session: explicit id, else the bot's default. */
+export async function resolveAttach(
+  name: string,
+  options: { new?: boolean; sessionId?: string } = {},
+): Promise<AttachTarget> {
   const { dir } = requireBot(name);
+  if (options.sessionId !== undefined && !isValidSessionId(options.sessionId)) {
+    throw new Error(`invalid session id: ${JSON.stringify(options.sessionId)}`);
+  }
   const server = await ensureServer(name);
   const pointer = options.new ? undefined : readSession(name);
-  const sessionId = pointer?.sessionId ?? newSessionId();
+  const sessionId = options.sessionId ?? pointer?.sessionId ?? newSessionId();
   // Record before attach: a crash between the two leaves a pointer that the
   // next attach materializes under the same id, so retries never fork sessions.
   recordAttached(name, { serverId: server.serverId, sessionId });
