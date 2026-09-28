@@ -287,8 +287,8 @@ passes `PI_BOT_NAME` / `PI_BOT_BIN`. No new state, no new policy.
 
 ## Web client (S4)
 
-Status: M4.1 and M4.2 done (`b02298c`, `ae3fd35`); M4.3 is next. This is the
-first client that shares the backend with the TUI instead of forking it.
+Status: M4.1–M4.3 done (`b02298c`, `ae3fd35`, `dc21fb0`). This is the first
+client that shares the backend with the TUI instead of forking it.
 
 ### Shape
 
@@ -334,13 +334,16 @@ bin/pi-bots-web                  # serve app, /api/bots, and /ws
 
 The app lists bots (running dot from the route file), opens the last session
 or a new one, renders the replicated transcript (user/assistant text,
-collapsible thinking and tool calls, tool results, compaction notes), and
-sends prompts through AgentController. The prompt stays disabled until the
-session is attached and hydrated. Rendering reads the snapshot on every
+collapsible thinking, tool calls, and compaction summaries, tool results),
+and sends prompts through AgentController. Session actions: stop aborts the
+open operation, compact summarizes the history while idle, new starts a
+fresh session. The prompt and the sidebar busy marker follow the snapshot's
+operation, so they are right for every turn. The prompt stays disabled until
+the session is attached and hydrated. Rendering reads the snapshot on every
 replicated update, so streaming comes for free.
 
-Known gaps: no stop/compact/new-session buttons (M4.3), no reconnect, plain
-text output only.
+Known gaps: no reconnect (a dropped bridge socket needs a manual reload), no
+session picker beyond the last session, plain text output only.
 
 ### Milestones
 
@@ -348,7 +351,9 @@ text output only.
   one live prompt through the bridge to a real bot.
 - M4.2 app (done): bot picker, session open, prompt, streamed transcript;
   verified in Chromium against a real bot.
-- M4.3 verbs in the UI (stop, compact, new session) and a running indicator.
+- M4.3 verbs (done): stop, compact, new in the session bar, plus the busy
+  state in the sidebar and the prompt. Same smoke covers abort during a
+  running tool call and compaction.
 
 ### Out of scope (M5)
 
