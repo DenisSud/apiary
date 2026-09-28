@@ -1,6 +1,9 @@
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect } from "node:net";
+import { extname, join, resolve, sep } from "node:path";
 import type { Duplex } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { resolveAttach, type AttachTarget } from "./launcher.ts";
 import { isValidBotName } from "./paths.ts";
@@ -19,6 +22,8 @@ export interface BridgeLauncher {
 export interface BridgeOptions {
   readonly port: number;
   readonly host?: string;
+  /** Static app directory; defaults to packages/web/dist. */
+  readonly webDir?: string;
   /** Overridable for tests; the default spawns real servers. */
   readonly launcher?: BridgeLauncher;
 }
@@ -31,8 +36,9 @@ export interface Bridge {
 
 export async function startBridge(options: BridgeOptions): Promise<Bridge> {
   const launcher = options.launcher ?? { resolveAttach };
+  const webDir = resolve(options.webDir ?? join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "web", "dist"));
   const wss = new WebSocketServer({ noServer: true });
-  const server = createServer((request, response) => handleRequest(request, response));
+  const server = createServer((request, response) => handleRequest(request, response, webDir));
   server.on("upgrade", (request, socket, head) => {
     void handleUpgrade(request, socket, head, launcher, wss);
   });
@@ -61,13 +67,72 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
   };
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse): void {
+function handleRequest(request: IncomingMessage, response: ServerResponse, webDir: string): void {
   const url = new URL(request.url ?? "/", "http://bridge");
   if (request.method === "GET" && url.pathname === "/api/bots") {
     sendJson(response, 200, { bots: listBots().map(summarizeBot) });
     return;
   }
+  if (request.method === "GET" || request.method === "HEAD") {
+    serveStatic(request, response, webDir, url.pathname);
+    return;
+  }
   sendJson(response, 404, { error: "not found" });
+}
+
+function serveStatic(
+  request: IncomingMessage,
+  response: ServerResponse,
+  webDir: string,
+  pathname: string,
+): void {
+  if (!existsSync(webDir)) {
+    sendText(response, 503, "web app not built: run `npm run build -w packages/web`\n");
+    return;
+  }
+  const relative = decodeURIComponent(pathname).replace(/^\/+/, "");
+  const target = resolve(webDir, relative === "" || relative.endsWith("/") ? `${relative}index.html` : relative);
+  if (target !== webDir && !target.startsWith(webDir + sep)) {
+    sendText(response, 404, "not found\n");
+    return;
+  }
+  if (!existsSync(target) || statSync(target).isDirectory()) {
+    sendText(response, 404, "not found\n");
+    return;
+  }
+  const size = statSync(target).size;
+  response.writeHead(200, { "content-type": contentType(target), "content-length": size });
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+  createReadStream(target).pipe(response);
+}
+
+function contentType(path: string): string {
+  switch (extname(path)) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+      return "application/json";
+    case ".map":
+      return "application/json";
+    case ".svg":
+      return "image/svg+xml";
+    case ".ico":
+      return "image/x-icon";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function sendText(response: ServerResponse, status: number, body: string): void {
+  response.writeHead(status, { "content-type": "text/plain; charset=utf-8", "content-length": Buffer.byteLength(body) });
+  response.end(body);
 }
 
 function summarizeBot(bot: BotInfo): Record<string, unknown> {

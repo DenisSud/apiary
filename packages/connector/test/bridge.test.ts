@@ -156,6 +156,41 @@ test("the WebSocket relay carries bytes to the unix socket and back", async () =
   }
 });
 
+test("serves the built app and refuses path escapes", async () => {
+  setupState();
+  const webDir = mkdtempSync(join(tmpdir(), "bridge-web-"));
+  writeFileSync(join(webDir, "index.html"), "<html>ok</html>\n");
+  mkdirSync(join(webDir, "assets"));
+  writeFileSync(join(webDir, "assets", "app.js"), "console.log(1)\n");
+  const bridge = await startBridge({ port: 0, webDir, launcher: fakeLauncher("/tmp/none.sock", []) });
+  try {
+    const root = await fetch(`http://127.0.0.1:${bridge.port}/`);
+    assert.equal(root.status, 200);
+    assert.match(root.headers.get("content-type") ?? "", /text\/html/);
+    assert.equal(await root.text(), "<html>ok</html>\n");
+    const script = await fetch(`http://127.0.0.1:${bridge.port}/assets/app.js`);
+    assert.equal(script.status, 200);
+    assert.match(script.headers.get("content-type") ?? "", /javascript/);
+    const escaped = await fetch(`http://127.0.0.1:${bridge.port}/%2e%2e%2f%2e%2e%2fetc%2fpasswd`);
+    assert.equal(escaped.status, 404);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test("reports a missing web build instead of failing", async () => {
+  setupState();
+  const missing = join(mkdtempSync(join(tmpdir(), "bridge-web-")), "nope");
+  const bridge = await startBridge({ port: 0, webDir: missing, launcher: fakeLauncher("/tmp/none.sock", []) });
+  try {
+    const response = await fetch(`http://127.0.0.1:${bridge.port}/`);
+    assert.equal(response.status, 503);
+    assert.match(await response.text(), /npm run build -w packages\/web/);
+  } finally {
+    await bridge.close();
+  }
+});
+
 test("an unknown bot is rejected during the upgrade", async () => {
   setupState();
   const bridge = await startBridge({ port: 0, launcher: fakeLauncher("/tmp/none.sock", []) });

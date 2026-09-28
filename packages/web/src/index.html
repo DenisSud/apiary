@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi bots</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <h1>bots <button id="refresh" title="refresh">&#8635;</button></h1>
+    <ul id="bot-list"></ul>
+  </aside>
+  <main id="main">
+    <header id="session-bar">
+      <span id="session-title">no session</span>
+      <span id="session-status"></span>
+    </header>
+    <section id="transcript"></section>
+    <form id="prompt-form">
+      <textarea id="prompt" rows="3" placeholder="prompt (enter sends, shift+enter newline)"></textarea>
+      <button id="send" type="submit">send</button>
+    </form>
+  </main>
+</div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
