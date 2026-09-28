@@ -1,60 +1,17 @@
 #!/usr/bin/env sh
-# pi-bot — run pi as one of Denis's bots.
+# pi-bot — attach to and manage Denis's bots.
 #
-#   pi-bot <name> [pi args...]   run a bot
-#   pi-bot new <name>            scaffold a new bot
-#   pi-bot list                  list bots
+#   pi-bot attach <bot> [--new]   attach (starts the bot's server if needed)
+#   pi-bot resolve <bot>          ensure the server, resolve the session
+#   pi-bot list                   list bots
+#   pi-bot new <name>             scaffold a new bot
+#   pi-bot <bot> [--new]          same as attach
 #
-# A bot is a complete pi agent dir at $PI_BOTS_HOME/<name> (default ~/Bots):
-# its own APPEND_SYSTEM.md persona, skills, extensions, settings, sessions and
-# memory clone. The base package (pi-bots) arrives through the bot's
-# settings.json; the wrapper only points pi at the bot dir.
+# A bot is a complete pi agent dir at $PI_BOTS_HOME/<name> (default ~/Bots).
+# It runs as a pi server; this script only boots the TypeScript CLI in
+# packages/connector. See packages/connector/README.md for the launcher spec.
 set -eu
 
-bots_home="${PI_BOTS_HOME:-$HOME/Bots}"
 self="$(readlink -f "$0")"
-
-if [ "$#" -lt 1 ]; then
-    echo "usage: pi-bot <name> [pi args...] | pi-bot new <name> | pi-bot list" >&2
-    exit 2
-fi
-
-case "$1" in
-    new)
-        shift
-        exec "$(dirname "$self")/pi-bot-new" "$@"
-        ;;
-    list)
-        for d in "$bots_home"/*/; do
-            [ -f "$d/settings.json" ] && basename "$d"
-        done
-        exit 0
-        ;;
-esac
-
-name="$1"
-shift
-bot_dir="$bots_home/$name"
-
-if [ ! -d "$bot_dir" ]; then
-    echo "pi-bot: unknown bot '$name' (no $bot_dir)" >&2
-    exit 1
-fi
-
-# Each bot works on its own clone of the memory repo. A missing clone is a
-# broken bot: falling back to the shared clone would let it write into the
-# working tree the other agents read, so refuse instead.
-if [ ! -d "$bot_dir/memory" ]; then
-    remote="$(git -C "$HOME/.pi/agent/memory" remote get-url origin 2>/dev/null || true)"
-    echo "pi-bot: $name has no memory clone at $bot_dir/memory" >&2
-    echo "        (not falling back to ~/.pi/agent/memory — that is shared)" >&2
-    if [ -n "$remote" ]; then
-        echo "        restore it: git clone $remote $bot_dir/memory" >&2
-    fi
-    exit 1
-fi
-PI_CODING_AGENT_DIR="$bot_dir"
-PI_MEMORY_DIR="$bot_dir/memory"
-export PI_CODING_AGENT_DIR PI_MEMORY_DIR
-
-exec pi "$@"
+root="$(dirname "$(dirname "$self")")"
+exec node "$root/packages/connector/src/bin.ts" "$@"

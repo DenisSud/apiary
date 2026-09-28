@@ -8,5 +8,9 @@
   "types": "./src/index.ts",
   "scripts": {
     "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-client": "0.87.1",
+    "@earendil-works/pi-server": "0.87.1"
   }
 }

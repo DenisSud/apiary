@@ -136,6 +136,7 @@ serverId       route's id if present, else crypto.randomUUID() (canonical v4)
 socket         getUnixSocketPath(serverId, dir) from @earendil-works/pi-server/unix
 sessions       <bot>/experimental/sessions (the server default with PI_CODING_AGENT_DIR set)
 log            ~/.pi/bots/logs/<bot>.log (append)
+checkout       $PI_SOURCE_DIR (default ~/dev/pi), pinned at 2b0a123d
 ```
 
 Spawn (detached, `cwd` = bot dir):
@@ -152,7 +153,9 @@ stdio -> log fd, detached, unref
 This is exactly the argv the checkout's `pi-test.sh` builds, minus the shell:
 we call `node` directly so the pid in the route **is** the server process and
 `stop` can signal it. `pi-test.sh` keeps a shell parent, so its pid would be the
-shell's, not the server's.
+shell's, not the server's. The server runs with `cwd` = the bot's agent dir, so
+its sessions belong to the bot (`experimental/sessions/--home-…-Bots-<bot>--/…`);
+stock pi tied sessions to the user's project directory instead.
 
 Readiness: connect with `@earendil-works/pi-client` and its `/unix` transport,
 which checks the protocol handshake, then dispose. Retry until 10 s; on timeout
@@ -183,6 +186,9 @@ across spawn and readiness.
 ```
 <checkout>/pi-test.sh client --connect unix://<socket> --session-id <id>
 ```
+
+`resolve` prints `<bot>\t<sessionId>\t<socketPath>`, or those refs as JSON with
+`--json`.
 
 ### Files
 

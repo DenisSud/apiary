@@ -16,6 +16,33 @@ export function serversDir(): string {
   return join(stateRoot(), "servers");
 }
 
+// One logical server per bot: a shared PI_SERVER_DIR would collide on
+// default-server-id, and session workers inherit the server environment.
+export function serverDir(name: string): string {
+  return join(serversDir(), assertBotName(name));
+}
+
+export function logsDir(): string {
+  return join(stateRoot(), "logs");
+}
+
+export function logPath(name: string): string {
+  return join(logsDir(), `${assertBotName(name)}.log`);
+}
+
+export function locksDir(): string {
+  return join(stateRoot(), "locks");
+}
+
+export function lockPath(name: string): string {
+  return join(locksDir(), `${assertBotName(name)}.lock`);
+}
+
+// The pi source checkout that runs the experimental server and client.
+export function sourceDir(): string {
+  return process.env.PI_SOURCE_DIR ?? join(homedir(), "dev", "pi");
+}
+
 export function routesDir(): string {
   return join(stateRoot(), "routes");
 }
