@@ -193,6 +193,14 @@ across spawn and readiness.
 `resolve` prints `<bot>\t<sessionId>\t<socketPath>`, or those refs as JSON with
 `--json`.
 
+### Launcher files
+
+```
+src/lock.ts      O_EXCL lock with stale takeover
+src/launcher.ts  ensure server, readiness probe, attach resolution
+src/bin.ts       verb dispatch
+```
+
 ### message, compact, stop (S2b)
 
 `message <bot> <text...>` runs the client headless with the text as the prompt
@@ -213,10 +221,64 @@ The server rewrites its process title to `pi`, so `cmdline` is useless for the
 identity check; the environment is not, which also protects against a recycled
 pid.
 
-### Files
+## TUI fork (S3)
+
+The experimental client TUI gets two commands and a way to restart against a
+different server. All of it lives in the fork (`dev` branch); the launcher only
+passes two extra environment variables.
+
+### Switch mechanism: in-process restart
+
+`runClientTui` is patched to return an optional switch target. A wrapper
+(`runBotsClientTui`) loops:
 
 ```
-src/lock.ts      O_EXCL lock with stale takeover
-src/launcher.ts  ensure server, readiness probe, attach resolution
-src/bin.ts       verb dispatch
+run TUI ──switch target──> dispose runtime ──> open runtime for target ──> run TUI
 ```
+
+Each iteration stops the TUI, disposes the client runtime and facets, and calls
+`runClientTui` again with a rewritten command (`--connect unix://<socket>`,
+`--session-id <id>`). No process exec, no process chain, and the teardown path is
+the one the TUI already uses when the user quits.
+
+A switch target comes from `pi-bot resolve --json [--new] <bot>` — the same
+process boundary the launcher uses, so the fork never reads the state files or
+reimplements any policy. Subprocess calls block the UI for ~100 ms; the status
+line shows "Switching to <bot>…" while it runs.
+
+### Commands
+
+- `/bot` opens the picker over `pi-bot list --json` (`[{ name, dir, hasRoute }]`),
+  marking the current bot and whether its server is running. `/bot <name>`
+  switches directly. Both attach the target bot's default session (the pointer),
+  exactly like `pi-bot attach`.
+- `/new` creates a fresh session on the current bot: `pi-bot resolve --json --new
+  <current>` records the pointer before attaching, so a crash between the two
+  never forks a session.
+- Switching while a turn is running is safe: the turn continues on the server;
+  the TUI just detaches. Attaching later shows it again.
+
+### Environment contract
+
+The launcher adds two variables to the client env:
+
+```
+PI_BOT_NAME  the bot this client was started for (the current bot)
+PI_BOT_BIN   absolute path to bin/pi-bot
+```
+
+Without `PI_BOT_NAME` (fork client started by hand) `/bot` still works; `/new`
+reports that it needs a launcher-started client.
+
+### Fork files touched
+
+```
+experimental/client-tui.ts            /bot, /new, switch target, footer bot name
+experimental/bots/client-loop.ts      restart loop (new file)
+experimental/commands.ts              call the loop instead of runClientTui
+```
+
+### pi-bots changes
+
+`pi-bot list --json` prints the registry as JSON for the picker; `runClient`
+passes `PI_BOT_NAME` / `PI_BOT_BIN`. No new state, no new policy.
