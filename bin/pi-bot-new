@@ -39,7 +39,20 @@ fi
 command -v jq >/dev/null 2>&1 || { echo "pi-bot-new: jq is required" >&2; exit 1; }
 
 # ── skeleton ─────────────────────────────────────────────────────────
-mkdir -p "$bot_dir/skills" "$bot_dir/extensions" "$bot_dir/sessions"
+mkdir -p "$bot_dir/skills" "$bot_dir/extensions" "$bot_dir/sessions" "$bot_dir/notes"
+
+cat > "$bot_dir/SOUL.md" <<EOF
+# SOUL — $name
+
+You are the **$name bot**.
+
+<!-- Voice, values, personality. Human-authored; the agent never edits this
+file. The job and the boundaries live in APPEND_SYSTEM.md. -->
+
+## Voice
+
+## Values
+EOF
 
 cat > "$bot_dir/APPEND_SYSTEM.md" <<EOF
 # $name bot

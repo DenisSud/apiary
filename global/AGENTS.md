@@ -12,11 +12,17 @@ Prefer the smallest solution that holds: question whether something needs to exi
 
 Code-specific rules (design vocabulary, TDD, test-before-ship review) live in the dev bot: `pi-bot dev`.
 
+## Growth
+
+Work that repeats becomes a skill; a skill used routinely becomes an automation. The ladder, the automation spec and the hard limits are in the `self-improvement` skill.
+
+One boundary holds for every agent: if the benefit of a task lies in doing it — thinking, deciding, learning, writing — it stays with Denis. Agents prepare and organize; they never take the doing over.
+
 ## Where things live
 
 - Base package (these rules, base extensions and skills): `~/dev/pi-bots`.
 - Bots: `~/Bots/<name>` — each is a complete pi agent dir and its own git repo; `pi-bot <name>` runs one, `pi-bot new <name>` scaffolds one.
-- System docs and decisions: `~/Bots/docs`.
+- System docs and decisions: `~/Bots/docs` (index: its `README.md`).
 - Memory: the shared clone is `~/.pi/agent/memory`; a bot works on its own clone at `<bot dir>/memory`.
 
 ## Secrets
