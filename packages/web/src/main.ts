@@ -119,30 +119,109 @@ const sessionStatus = mustFind<HTMLSpanElement>("#session-status");
 const transcriptElement = mustFind<HTMLElement>("#transcript");
 const promptForm = mustFind<HTMLFormElement>("#prompt-form");
 const promptInput = mustFind<HTMLTextAreaElement>("#prompt");
+const composerElement = mustFind<HTMLElement>("#composer");
+const composerToggle = mustFind<HTMLButtonElement>("#composer-toggle");
+const promptLine = 23; // px, mirrors --prompt-line in style.css
+const composerState = { expanded: false };
 const sendButton = mustFind<HTMLButtonElement>("#send");
 const stopButton = mustFind<HTMLButtonElement>("#stop");
 const compactButton = mustFind<HTMLButtonElement>("#compact");
 const newButton = mustFind<HTMLButtonElement>("#new");
 const latestButton = mustFind<HTMLButtonElement>("#latest");
+const latestSpinner = document.querySelector<HTMLElement>("#latest-spin");
+const menuButton = mustFind<HTMLButtonElement>("#menu");
+const sidebarCloseButton = mustFind<HTMLButtonElement>("#sidebar-close");
+const scrim = mustFind<HTMLElement>("#scrim");
+
+const ICON_PLUS =
+	'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
 
 let active: ActiveSession | undefined;
 let bots: BotSummary[] = [];
-// True while the open session has a running turn; drives the sidebar marker.
+// True while the open session has a running turn; drives the sidebar marker
+// and the jump pill's spinner.
 let laneBusy = false;
-// The reader is at the end and wants new output to pull the view down.
-let following = true;
+
+/**
+ * The spine: one rAF loop owns both smooth behaviors. The transcript follows
+ * the end with an exponential glide (~75ms time constant) instead of per-chunk
+ * snaps, and the live window's content translates through its mask the same
+ * way. Following stops the moment the reader scrolls up and only start again
+ * from the jump pill or a sent message — a chunk landing elsewhere never
+ * steals the viewport.
+ */
+const spine = {
+	following: true,
+	ty: 0, // current live-window translation
+	last: 0,
+	showLatest: false,
+	expected: undefined as number | undefined, // scrollTop we last wrote
+};
+function tickSpine(now: number): void {
+	const dt = Math.min(0.1, (now - spine.last) / 1000);
+	spine.last = now;
+	if (spine.following && active !== undefined) {
+		const distance = transcriptElement.scrollHeight - transcriptElement.clientHeight - transcriptElement.scrollTop;
+		if (distance > 0.5) {
+			transcriptElement.scrollTop += distance * (1 - Math.exp(-dt / 0.075));
+			spine.expected = transcriptElement.scrollTop;
+		}
+	}
+	if (liveWindow !== undefined) {
+		const overflow = Math.max(0, liveWindow.line.offsetHeight - liveWindow.clip.clientHeight + 14);
+		if (overflow > 0) {
+			spine.ty += (overflow - spine.ty) * (1 - Math.exp(-dt / 0.07));
+		} else {
+			spine.ty *= Math.exp(-dt / 0.05);
+		}
+		if (spine.ty > 0.5) liveWindow.line.style.transform = `translateY(${(-spine.ty).toFixed(1)}px)`;
+		else if (liveWindow.line.style.transform !== "") liveWindow.line.style.transform = "";
+	} else {
+		spine.ty = 0;
+	}
+	const show = !spine.following && active !== undefined;
+	if (show !== spine.showLatest) {
+		spine.showLatest = show;
+		latestButton.classList.toggle("show", show);
+	}
+	if (latestSpinner !== null && latestSpinner.hidden === laneBusy) latestSpinner.hidden = !laneBusy;
+	requestAnimationFrame(tickSpine);
+}
+requestAnimationFrame((t) => {
+	spine.last = t;
+	requestAnimationFrame(tickSpine);
+});
 
 // The transcript is appended to, never rebuilt, so <details> stay open, the
 // streaming caret keeps blinking, and new entries can animate in. Compaction
 // and session switches replace the list and go through the rebuild path.
 let renderedIds: string[] = [];
 const toolSteps = new Map<string, HTMLDetailsElement>();
+// Results seen before the tool's settled row renders, so the status dot and
+// output arrive whatever the order of transcript entries.
+const toolResults = new Map<string, MessageLike>();
 const liveSlot = document.createElement("div");
 liveSlot.className = "live";
+
+/** Streaming answer text: settled markdown plus a fading tail. */
+interface StreamText {
+	wrap: HTMLElement;
+	settled: HTMLElement;
+	tail: HTMLSpanElement;
+	source: string;
+}
+/** Live work window: a fixed masked viewport the text glides through. */
+interface ThinkingWindow {
+	clip: HTMLElement;
+	line: HTMLElement;
+	source: string;
+}
+let liveWindow: ThinkingWindow | undefined;
 let live: {
 	shape: string;
-	text?: { element: HTMLElement; source: string };
-	thinking?: { element: HTMLElement; source: string };
+	text?: StreamText;
+	root?: HTMLElement;
+	queuedIds?: string;
 } = { shape: "" };
 
 // No prompt until a session is attached and hydrated.
@@ -192,7 +271,9 @@ function bridgeUrl(path: string): string {
 }
 
 function setStatus(text: string, kind: "idle" | "busy" | "error" = "idle"): void {
-	sessionStatus.textContent = text;
+	const dot = document.createElement("span");
+	dot.className = "dot";
+	sessionStatus.replaceChildren(dot, document.createTextNode(text));
 	sessionStatus.className = kind;
 }
 
@@ -217,24 +298,24 @@ function renderBots(): void {
 		const meta = document.createElement("div");
 		meta.className = "bot-meta";
 
-		const open = document.createElement("button");
-		open.className = "bot-name";
-		open.textContent = bot.name;
-		open.onclick = () => void openBot(bot.name, false);
+		const name = document.createElement("span");
+		name.className = "bot-name";
+		name.textContent = bot.name;
 
 		const state = document.createElement("span");
 		state.className = busy ? "bot-state busy" : bot.running ? "bot-state running" : "bot-state";
 		state.textContent = busy ? "running a turn" : bot.running ? "server running" : "idle";
 
-		meta.append(open, state);
+		meta.append(name, state);
 
-		const fresh = document.createElement("button");
-		fresh.className = "new";
-		fresh.textContent = "+";
-		fresh.title = "new session";
-		fresh.onclick = () => void openBot(bot.name, true);
+		// one full-row button: the whole pill is the press target
+		const open = document.createElement("button");
+		open.className = "bot-open";
+		open.type = "button";
+		open.onclick = () => void openBot(bot.name, false);
 
-		item.append(blobatarSvg(bot.name, "avatar", false).element, meta, fresh);
+		open.append(blobatarSvg(bot.name, "avatar", false).element, meta);
+		item.append(open);
 		fragment.append(item);
 	}
 	botList.replaceChildren(fragment);
@@ -279,7 +360,8 @@ async function openBot(bot: string, fresh: boolean): Promise<void> {
 
 		active = { bot, sessionId, serverId, client, activated, ws, unsubscribe: () => {} };
 		setSessionTitle(bot, sessionId);
-		following = true;
+		spine.following = true;
+		document.body.classList.remove("drawer-open");
 		active.unsubscribe = activated.transcript.state.subscribe((state) => {
 			// A late update from a previous bot must not clobber the current view.
 			if (active?.sessionId === openSessionId) renderTranscript(state.snapshot);
@@ -372,28 +454,40 @@ function updateComposer(): void {
 }
 
 function resetTranscript(): void {
+	if (liveSwapTimer !== undefined) {
+		clearTimeout(liveSwapTimer);
+		liveSwapTimer = undefined;
+	}
 	renderedIds = [];
 	toolSteps.clear();
+	toolResults.clear();
+	liveWindow = undefined;
+	spine.ty = 0;
+	spine.following = true;
+	spine.showLatest = false;
+	latestButton.classList.remove("show");
 	live = { shape: "" };
 	liveSlot.replaceChildren();
 	liveSlot.classList.remove("enter");
 	transcriptElement.replaceChildren(liveSlot);
 	transcriptElement.classList.add("empty");
-	latestButton.hidden = true;
 }
 
 function scrollToBottom(smooth: boolean): void {
-	transcriptElement.scrollTo({ top: transcriptElement.scrollHeight, behavior: smooth ? "smooth" : "auto" });
-	following = true;
+	spine.following = true;
 	updateLatest();
 }
 
 function isNearBottom(): boolean {
-	return transcriptElement.scrollHeight - transcriptElement.scrollTop - transcriptElement.clientHeight < 80;
+	return transcriptElement.scrollHeight - transcriptElement.scrollTop - transcriptElement.clientHeight < 90;
 }
 
 function updateLatest(): void {
-	latestButton.hidden = following || active === undefined;
+	const show = !spine.following && active !== undefined;
+	if (show !== spine.showLatest) {
+		spine.showLatest = show;
+		latestButton.classList.toggle("show", show);
+	}
 }
 
 function renderTranscript(snapshot: TranscriptSnapshot | null | undefined): void {
@@ -401,13 +495,14 @@ function renderTranscript(snapshot: TranscriptSnapshot | null | undefined): void
 		setStatus("waiting for the transcript", "busy");
 		return;
 	}
-	const stick = following;
+	const stick = spine.following;
 	const entries = snapshot.transcript;
 	const prefix =
 		entries.length >= renderedIds.length && renderedIds.every((id, index) => entries[index]?.id === id);
 	if (!prefix) {
 		renderedIds = [];
 		toolSteps.clear();
+		toolResults.clear();
 		transcriptElement.replaceChildren(liveSlot);
 		const fragment = document.createDocumentFragment();
 		for (const entry of entries) {
@@ -442,12 +537,8 @@ function renderEntry(entry: Entry): HTMLElement | undefined {
 		case "message": {
 			const message = entry.message;
 			if (message.role === "toolResult") {
-				const step = message.toolCallId === undefined ? undefined : toolSteps.get(message.toolCallId);
-				if (step !== undefined) {
-					attachResult(step, message);
-					return undefined;
-				}
-				return toolResultPanel(message);
+				if (message.toolCallId !== undefined) toolResults.set(message.toolCallId, message);
+				return undefined;
 			}
 			return renderMessage(message);
 		}
@@ -474,16 +565,16 @@ function renderMessage(message: MessageLike, options: { register?: boolean } = {
 		article.append(bubble);
 		return article;
 	}
+	let hasText = false;
+	// tool calls and thinking are not rendered for now (styling kept)
 	for (const block of messageBlocks(message)) {
 		if (block.type === "text" && block.text.trim() !== "") {
 			article.append(markdown(block.text));
-		} else if (block.type === "thinking" && block.thinking.trim() !== "") {
-			article.append(collapsible("thinking", block.thinking));
-		} else if (block.type === "toolCall") {
-			article.append(toolStep(block, false, options.register !== false));
+			hasText = true;
 		}
 	}
 	if (message.stopReason === "error" && message.errorMessage !== undefined) article.append(note(message.errorMessage));
+	if (!hasText) article.classList.add("blockless");
 	return article;
 }
 
@@ -497,107 +588,196 @@ function renderLive(snapshot: TranscriptSnapshot): void {
 	const streaming = operation?.streamingMessage;
 	const running = (operation?.runningTools ?? []).filter((tool) => tool.status === "running");
 	const text = streaming === undefined ? "" : blockText(streaming, "text");
-	const thinking = streaming === undefined ? "" : blockText(streaming, "thinking");
+	const queuedIds = queued.map((item) => item.entryId).join(",");
 	const shape = JSON.stringify({
 		id: operation?.id ?? null,
 		status: operation?.status ?? null,
 		deferred: operation?.deferred !== undefined,
-		queued: queued.map((item) => item.entryId),
+		queued: queuedIds,
 		blocks: messageBlocks(streaming).map((block) => block.type),
 		running: running.map((tool) => tool.toolCallId),
 		streaming: streaming !== undefined,
 		hasText: text.trim() !== "",
-		hasThinking: thinking.trim() !== "",
 	});
 	if (shape === live.shape) {
-		// The same nodes, with a longer answer: update the text in place so the
-		// caret keeps blinking instead of restarting on every update.
-		if (live.text !== undefined && text !== live.text.source) {
-			live.text.source = text;
-			live.text.element.innerHTML = renderMarkdown(text);
-		}
-		if (live.thinking !== undefined && thinking !== live.thinking.source) {
-			live.thinking.source = thinking;
-			live.thinking.element.textContent = thinking;
-		}
+		// The same nodes, with more content: extend what is already rendered.
+		if (live.text !== undefined && text !== live.text.source) updateStreamText(live.text, text);
 		return;
 	}
-	live = { shape };
+	live.shape = shape;
+	spine.ty = 0;
+	liveWindow = undefined;
+	// The answer is on screen and still streaming: keep it, only the working
+	// line under it changes (a full swap would blink the whole answer).
+	if (live.text !== undefined && live.root !== undefined && text.trim() !== "" && queuedIds === live.queuedIds) {
+		updateStreamText(live.text, text);
+		setWorkLine(live.root, running[running.length - 1]);
+		return;
+	}
+	live.text = undefined;
+	live.root = undefined;
+	live.queuedIds = queuedIds;
 	const fragment = document.createDocumentFragment();
 	for (const item of queued) fragment.append(queuedMessage(item));
 	if (streaming !== undefined) {
-		const view = liveMessage(streaming, running, operation?.deferred !== undefined);
-		live.text = view.text;
-		live.thinking = view.thinking;
-		fragment.append(view.root);
-	} else if (running.length > 0) {
-		// Between messages the streaming slot is empty while tools run; the
-		// snapshot still carries them.
-		for (const tool of running) fragment.append(runningStep(tool));
+		const view = createLiveView(streaming, running, operation?.deferred !== undefined);
+		live.root = view;
+		fragment.append(view);
 	} else if (operation !== null && operation !== undefined) {
-		fragment.append(thinkingLine(operation.deferred !== undefined));
+		const tool = running[running.length - 1];
+		fragment.append(tool === undefined ? thinkingLine(operation.deferred !== undefined) : runningLine(tool));
 	}
-	liveSlot.replaceChildren(fragment);
-	if (liveSlot.firstElementChild !== null) liveSlot.classList.add("enter");
+	swapLive(fragment);
 }
 
-function liveMessage(
-	message: MessageLike,
-	running: RunningTool[],
-	deferred: boolean,
-): {
-	root: HTMLElement;
-	text?: { element: HTMLElement; source: string };
-	thinking?: { element: HTMLElement; source: string };
-} {
+/**
+ * The live view: the answer being written, or one quiet working line while
+ * the model thinks or runs tools. Tool rows and thinking blocks stay in the
+ * stylesheet for later; they are not rendered for now.
+ */
+function createLiveView(message: MessageLike, running: RunningTool[], deferred: boolean): HTMLElement {
 	const root = document.createElement("article");
 	root.className = "message assistant streaming";
 	const text = blockText(message, "text");
-	const thinking = blockText(message, "thinking");
-	const steps: ToolCallBlock[] = messageBlocks(message).filter(isToolCall);
-	const runningIds = new Set(running.map((tool) => tool.toolCallId));
-	let textView: { element: HTMLElement; source: string } | undefined;
-	let thinkingView: { element: HTMLElement; source: string } | undefined;
+	const tool = running[running.length - 1];
 	if (text.trim() !== "") {
-		const element = markdown(text);
-		const cursor = document.createElement("span");
-		cursor.className = "cursor";
-		root.append(element, cursor);
-		textView = { element, source: text };
-		for (const block of steps) root.append(toolStep(block, runningIds.has(block.id), false));
-		if (thinking.trim() !== "") {
-			const details = collapsible("thinking", thinking);
-			root.append(details);
-			thinkingView = { element: details.querySelector("pre") as HTMLElement, source: thinking };
+		const stream = newStreamText();
+		root.append(stream.wrap);
+		updateStreamText(stream, text);
+		live.text = stream;
+		// what the model already said stays above the tool it is running now
+		if (tool !== undefined) {
+			const line = runningLine(tool);
+			line.dataset.key = tool.toolCallId;
+			root.append(line);
 		}
-	} else if (steps.length > 0 || running.length > 0) {
-		root.append(thinkingLine(deferred));
-		for (const block of steps) root.append(toolStep(block, runningIds.has(block.id), false));
-		for (const tool of running) {
-			if (steps.some((block) => block.id === tool.toolCallId)) continue;
-			root.append(runningStep(tool));
+		return root;
+	}
+	root.append(tool === undefined ? thinkingLine(deferred) : runningLine(tool));
+	return root;
+}
+
+/** Add, replace or fade out the working line under the streaming answer. */
+function setWorkLine(root: HTMLElement, tool: RunningTool | undefined): void {
+	const current = root.querySelector<HTMLElement>(".work");
+	if (tool === undefined) {
+		if (current !== null && current.dataset.leaving !== "1") {
+			current.dataset.leaving = "1";
+			current
+				.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: EASE })
+				.finished.then(() => current.remove())
+				.catch(() => current.remove());
 		}
-		if (thinking.trim() !== "") {
-			const details = collapsible("thinking", thinking);
-			root.append(details);
-			thinkingView = { element: details.querySelector("pre") as HTMLElement, source: thinking };
+		return;
+	}
+	if (current !== null && current.dataset.key === tool.toolCallId) return;
+	const next = runningLine(tool);
+	next.dataset.key = tool.toolCallId;
+	next.classList.add("enter");
+	if (current !== null) current.replaceWith(next);
+	else root.append(next);
+}
+
+/** Streaming answer text: settled markdown plus a fading tail. */
+interface StreamText {
+	wrap: HTMLElement;
+	settled: HTMLElement;
+	tail: HTMLSpanElement;
+	source: string;
+}
+
+function newStreamText(): StreamText {
+	const wrap = document.createElement("div");
+	wrap.className = "text markdown";
+	const settled = document.createElement("div");
+	settled.className = "settled";
+	const tail = document.createElement("span");
+	tail.className = "tail";
+	settled.append(tail);
+	wrap.append(settled);
+	return { wrap, settled, tail, source: "" };
+}
+
+/**
+ * Append-only updates fade in what arrived (fade < median inter-token
+ * interval, so the pace follows the model's real throughput); any rewrite
+ * re-renders whole with no animation.
+ */
+function updateStreamText(stream: StreamText, next: string): void {
+	const oldFull = stream.source + (stream.tail.textContent ?? "");
+	if (oldFull !== "" && next.startsWith(oldFull)) {
+		stream.source = oldFull;
+		stream.settled.innerHTML = renderMarkdown(oldFull);
+		placeTail(stream, next.slice(oldFull.length));
+	} else {
+		stream.source = next;
+		stream.settled.innerHTML = renderMarkdown(next);
+		stream.tail.replaceChildren();
+		const blocks = stream.settled.children;
+		const last = blocks[blocks.length - 1];
+		if (last !== undefined && /^(P|LI|H[1-4]|UL|OL|BLOCKQUOTE)$/.test(last.tagName)) last.append(stream.tail);
+		else stream.settled.append(stream.tail);
+	}
+}
+
+function placeTail(stream: StreamText, delta: string): void {
+	const fresh = document.createElement("span");
+	fresh.className = "tail";
+	if (delta !== "") {
+		if (delta.length <= 40) appendRevealSpan(fresh, delta);
+		else for (const word of delta.match(/\S+ ?/g) ?? []) appendRevealSpan(fresh, word);
+	}
+	stream.tail.replaceWith(fresh);
+	stream.tail = fresh;
+	const blocks = stream.settled.children;
+	const last = blocks[blocks.length - 1];
+	if (last !== undefined && /^(P|LI|H[1-4]|UL|OL|BLOCKQUOTE)$/.test(last.tagName)) last.append(stream.tail);
+	else stream.settled.append(stream.tail);
+}
+
+function appendRevealSpan(parent: HTMLElement, text: string): void {
+	const span = document.createElement("span");
+	span.className = "w-fade";
+	span.textContent = text;
+	parent.append(span);
+}
+
+/* ---- live work window: fixed masked viewport, text glides through ---- */
+
+function makeLiveWindow(source: string): ThinkingWindow {
+	const clip = document.createElement("div");
+	clip.className = "live-window";
+	const line = document.createElement("p");
+	line.className = "live-line";
+	line.textContent = source;
+	clip.append(line);
+	return { clip, line, source };
+}
+
+function appendThinkingTail(win: ThinkingWindow, next: string): void {
+	if (next.startsWith(win.source)) {
+		const delta = next.slice(win.source.length);
+		if (delta !== "") {
+			if (delta.length <= 40) appendRevealSpan(win.line, delta);
+			else for (const word of delta.match(/\S+ ?/g) ?? []) appendRevealSpan(win.line, word);
 		}
 	} else {
-		root.append(thinkingLine(deferred));
-		if (thinking.trim() !== "") {
-			const details = collapsible("thinking", thinking);
-			root.append(details);
-			thinkingView = { element: details.querySelector("pre") as HTMLElement, source: thinking };
-		}
+		win.line.textContent = next;
 	}
-	return { root, text: textView, thinking: thinkingView };
+	win.source = next;
+}
+
+function statusDot(shape: "" | "wait"): HTMLElement {
+	const dot = document.createElement("span");
+	dot.className = shape === "" ? "tdot" : `tdot ${shape}`;
+	return dot;
 }
 
 function toolStep(block: ToolCallBlock, running: boolean, register: boolean): HTMLDetailsElement {
 	const details = document.createElement("details");
 	details.className = running ? "step tool running" : "step tool";
 	const summary = document.createElement("summary");
-	summary.append(running ? spinner() : bullet());
+	summary.append(statusDot(running ? "wait" : ""));
 	const name = document.createElement("span");
 	name.className = "step-name";
 	name.textContent = block.name;
@@ -609,7 +789,11 @@ function toolStep(block: ToolCallBlock, running: boolean, register: boolean): HT
 	args.className = "step-block args";
 	args.textContent = pretty(block.arguments);
 	details.append(summary, args);
-	if (register) toolSteps.set(block.id, details);
+	if (register) {
+		toolSteps.set(block.id, details);
+		const cached = toolResults.get(block.id);
+		if (cached !== undefined) attachResult(details, cached);
+	}
 	return details;
 }
 
@@ -623,12 +807,14 @@ function runningStep(tool: RunningTool): HTMLDetailsElement {
 	const text = document.createElement("span");
 	text.className = "step-text";
 	text.textContent = summarizeArgs(tool.args) || "\u2026";
-	summary.append(spinner(), name, text);
+	summary.append(statusDot("wait"), name, text);
 	details.append(summary);
 	return details;
 }
 
 function attachResult(step: HTMLDetailsElement, message: MessageLike): void {
+	const dot = step.querySelector(".tdot");
+	if (dot !== null) dot.className = message.isError === true ? "tdot err" : "tdot ok";
 	if (message.isError === true) step.classList.add("failed");
 	const pre = document.createElement("pre");
 	pre.className = "step-block result";
@@ -663,30 +849,114 @@ function queuedMessage(item: QueuedItem): HTMLElement {
 	return article;
 }
 
+/** The quiet working line before anything lands. */
 function thinkingLine(deferred: boolean): HTMLElement {
+	return workLine(ICONS.thinking, deferred ? "Waiting" : "Thinking", "", true);
+}
+
+/** The working line while a tool runs: its icon, label and argument. */
+function runningLine(tool: RunningTool): HTMLElement {
+	return workLine(iconFor(tool.toolName), labelFor(tool.toolName), summarizeArgs(tool.args), false);
+}
+
+/* ---- working line: one quiet row, a tool icon and a short label ---- */
+
+const SVG_ATTRS =
+	'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+
+/** One icon per standard tool; anything else gets the general wrench. */
+const ICONS: Record<string, string> = {
+	bash: '<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',
+	read: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+	write:
+		'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+	edit: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+	ls: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+	grep: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+	glob: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+	find: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+	web: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+	general:
+		'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+	thinking:
+		'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
+	wait: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+};
+
+const TOOL_LABELS: Record<string, string> = {
+	bash: "Running command",
+	read: "Reading",
+	write: "Writing",
+	edit: "Editing",
+	ls: "Listing files",
+	grep: "Searching",
+	glob: "Finding files",
+	find: "Finding files",
+	web_search: "Searching the web",
+	web_fetch: "Fetching page",
+};
+
+function iconFor(tool: string): string {
+	if (tool in ICONS) return ICONS[tool];
+	if (tool.startsWith("web")) return ICONS.web;
+	return ICONS.general;
+}
+
+function labelFor(tool: string): string {
+	return TOOL_LABELS[tool] ?? tool.replace(/_/g, " ");
+}
+
+/** One working line: icon, label, optional detail, optional dots. */
+function workLine(icon: string, label: string, detail: string, dots: boolean): HTMLElement {
 	const line = document.createElement("div");
-	line.className = "thinking";
-	line.append(document.createTextNode(deferred ? "deferred" : "thinking"));
-	const dots = document.createElement("span");
-	dots.className = "dots";
-	for (let index = 0; index < 3; index += 1) dots.append(document.createElement("i"));
-	line.append(dots);
+	line.className = "work thinking";
+	const glyph = document.createElement("span");
+	glyph.className = "work-icon";
+	glyph.innerHTML = `<svg ${SVG_ATTRS}>${icon}</svg>`;
+	const text = document.createElement("span");
+	text.className = "work-label";
+	text.textContent = label;
+	line.append(glyph, text);
+	if (detail !== "") {
+		const args = document.createElement("span");
+		args.className = "work-detail";
+		args.textContent = detail;
+		line.append(args);
+	}
+	if (dots) {
+		const pulse = document.createElement("span");
+		pulse.className = "dots";
+		for (let index = 0; index < 3; index += 1) pulse.append(document.createElement("i"));
+		line.append(pulse);
+	}
 	return line;
 }
 
-function spinner(): HTMLElement {
-	const element = document.createElement("span");
-	element.className = "spinner";
-	element.setAttribute("aria-hidden", "true");
-	return element;
-}
+const EASE = "cubic-bezier(0.2, 0, 0, 1)";
+let liveSwapTimer: number | undefined;
 
-function bullet(): HTMLElement {
-	const element = document.createElement("span");
-	element.className = "step-bullet";
-	element.textContent = "\u2022";
-	element.setAttribute("aria-hidden", "true");
-	return element;
+/** Replace the live slot: the outgoing content fades out, the new fades in. */
+function swapLive(fragment: DocumentFragment): void {
+	const place = (): void => {
+		liveSlot.replaceChildren(fragment);
+		for (const node of liveSlot.children) node.classList.add("enter");
+	};
+	const previous = [...liveSlot.children];
+	if (liveSwapTimer !== undefined) {
+		clearTimeout(liveSwapTimer);
+		liveSwapTimer = undefined;
+		place();
+		return;
+	}
+	if (previous.length === 0) {
+		place();
+		return;
+	}
+	for (const node of previous) node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: EASE });
+	liveSwapTimer = window.setTimeout(() => {
+		liveSwapTimer = undefined;
+		place();
+	}, 150);
 }
 
 function markdown(source: string): HTMLElement {
@@ -698,15 +968,17 @@ function markdown(source: string): HTMLElement {
 
 function collapsible(label: string, body: string): HTMLDetailsElement {
 	const details = document.createElement("details");
-	details.className = "step thinking-step";
+	details.className = "reason-row";
 	const summary = document.createElement("summary");
-	summary.append(bullet());
+	const chev = document.createElement("span");
+	chev.className = "chev";
+	chev.textContent = "\u203a";
 	const name = document.createElement("span");
-	name.className = "step-name";
+	name.className = "reason-label";
 	name.textContent = label;
-	summary.append(name);
+	summary.append(chev, name);
 	const pre = document.createElement("pre");
-	pre.className = "step-block";
+	pre.className = "rbody";
 	pre.textContent = body;
 	details.append(summary, pre);
 	return details;
@@ -787,10 +1059,35 @@ function message(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-function autogrow(): void {
-	promptInput.style.height = "auto";
-	promptInput.style.height = `${Math.min(promptInput.scrollHeight, 200)}px`;
+/**
+ * The composer pill: one line grows with the text; past 14 lines it caps
+ * (scrollable, fading top) until the toggle calls for the expanded 27.
+ */
+function composerRelayout(): void {
+	promptInput.style.height = "0px";
+	const single = promptLine;
+	const natural = promptInput.scrollHeight;
+	const multiline = composerState.expanded || promptInput.value.includes("\n") || natural > single + 4;
+	composerElement.classList.toggle("multiline", multiline);
+	const cap = Math.max(
+		3 * promptLine,
+		Math.min((composerState.expanded ? 27 : 14) * promptLine, window.innerHeight - 152),
+	);
+	promptInput.style.height = `${Math.min(natural, multiline ? cap : single)}px`;
+	composerElement.classList.toggle("capped", promptInput.scrollHeight > promptInput.clientHeight + 1);
+	promptInput.scrollTop = promptInput.scrollHeight;
 }
+
+window.addEventListener("resize", () => composerRelayout());
+
+composerToggle.addEventListener("click", () => {
+	composerState.expanded = !composerState.expanded;
+	composerElement.classList.toggle("expanded", composerState.expanded);
+	composerToggle.title = composerState.expanded ? "collapse input" : "expand input";
+	composerToggle.ariaLabel = composerToggle.title;
+	composerRelayout();
+	promptInput.focus();
+});
 
 /** Text still in the lane queues, handed back to the composer on abort. */
 function restoreQueued(): void {
@@ -801,7 +1098,7 @@ function restoreQueued(): void {
 	if (dropped.length === 0) return;
 	const text = dropped.join("\n\n");
 	promptInput.value = promptInput.value.trim() === "" ? text : `${text}\n\n${promptInput.value}`;
-	autogrow();
+	composerRelayout();
 	updateComposer();
 }
 
@@ -812,7 +1109,7 @@ promptForm.addEventListener("submit", (event) => {
 	if (text === "" || session === undefined) return;
 	const request = { message: text, images: null };
 	promptInput.value = "";
-	autogrow();
+	composerRelayout();
 	updateComposer();
 	scrollToBottom(true);
 	// While a turn runs the message steers it; otherwise it starts a turn.
@@ -838,7 +1135,7 @@ promptForm.addEventListener("submit", (event) => {
 });
 
 promptInput.addEventListener("input", () => {
-	autogrow();
+	composerRelayout();
 	updateComposer();
 });
 
@@ -850,9 +1147,17 @@ promptInput.addEventListener("keydown", (event) => {
 });
 
 transcriptElement.addEventListener("scroll", () => {
-	following = isNearBottom();
+	// The spine's own glide reports scroll events; only a human struggle
+	// (positions we did not write) counts as "the reader moved".
+	if (spine.expected !== undefined && Math.abs(spine.expected - transcriptElement.scrollTop) <= 2) return;
+	spine.expected = undefined;
+	spine.following = isNearBottom();
 	updateLatest();
 });
+
+menuButton.addEventListener("click", () => document.body.classList.add("drawer-open"));
+sidebarCloseButton.addEventListener("click", () => document.body.classList.remove("drawer-open"));
+scrim.addEventListener("click", () => document.body.classList.remove("drawer-open"));
 
 latestButton.addEventListener("click", () => scrollToBottom(true));
 refreshButton.addEventListener("click", () => void refreshBots());
