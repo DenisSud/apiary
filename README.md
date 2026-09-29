@@ -11,15 +11,19 @@ load.
 ## Layout
 
 ```
-├── package.json          # base pi package manifest (pi-package)
+├── package.json          # base pi package manifest (pi-package) + bun workspaces
 ├── settings.json         # shareable defaults (model, provider, thinking, theme)
 ├── install.sh            # settings merge, package install, bot tooling, ~/Bots
+├── devenv.nix            # dev shell: node + bun, extractors, one command per task
 ├── global/AGENTS.md      # the base rules — injected into every agent by house-rules
 ├── extensions/           # house-rules, security, ptc, sysinfo, web-search, memory
 ├── skills/               # skill-authoring, handoff, grilling
+├── packages/connector/   # bot registry, launcher, bridge — the pi-bot implementation
+├── packages/web/         # browser client served by the bridge
 ├── registry/             # promotion policy — deferred, see registry/README.md
-├── bin/pi-bot            # run a bot / scaffold one / list them
+├── bin/pi-bot            # attach / message / resolve / list / new (connector CLI)
 ├── bin/pi-bot-new        # the scaffold behind `pi-bot new`
+├── bin/pi-bots-web       # bridge + web app server
 └── fish/pi.fish          # fish function: pi --bot <name>
 ```
 
@@ -39,7 +43,8 @@ time). Everything domain-specific lives in a bot.
 
 `web-search` expects a SearXNG instance (`SEARXNG_BASE_URL`, default
 `http://127.0.0.1:8888`) and the `trafilatura` + `pdftotext`/`pandoc` binaries
-for `web_fetch` (the NixOS module lives in the nixos-config repo).
+for `web_fetch`. The devenv shell ships the extractors; the SearXNG module
+lives in the nixos-config repo.
 
 ## Bots
 
@@ -116,6 +121,38 @@ pi-bot <name>              # run it
 
 ## Development
 
+`devenv shell` gives you node 24 + bun, jq, shellcheck, watchexec and the
+`web_fetch` extractors — no system packages needed beyond `pi` itself.
+`bun install` re-runs when `bun.lock` changes.
+
+Tasks are devenv scripts, all listed by `devenv info`:
+
+| command | what it does |
+|---|---|
+| `check` | connector suite + every extension harness (the pre-commit gate) |
+| `test-ext [name…]` | extension harnesses only — all, or named ones |
+| `test-connector` | `node --test` for packages/connector |
+| `test-web-search-live` | live web-search test (needs the local SearXNG) |
+| `build` | bundle packages/web/dist |
+| `web` | serve the app + bridge on 127.0.0.1:8787 |
+| `web-watch` | rebuild the bundle while packages/web/src changes |
+| `bot <name>` | this checkout's pi-bot (local connector source) |
+| `lint` | shellcheck the entrypoints, `fish -n` the fish function |
+| `doctor` | pi, the pi source checkout, bots root, SearXNG |
+| `install-base` | run ./install.sh on this machine |
+
+`devenv up` builds the web app and serves it; `devenv test` runs `check`.
+
+Two host dependencies stay outside the devenv on purpose:
+
+- **`pi`** — the extension test runners resolve the installed pi store from
+  `command -v pi`, so tests run against the same pi the agents run. The devenv
+  deliberately avoids `languages.javascript`, which prepends
+  `node_modules/.bin` to PATH — bun's auto-installed peer `pi-coding-agent`
+  would shadow the system binary there and the runners could not resolve a
+  monorepo store. `doctor` reports the version in use.
+- **the pi source checkout** — bots are spawned from `$PI_SOURCE_DIR`
+  (default `~/dev/pi`) and the web bundle resolves `@pi/fork/*` there.
+
 Register the checkout as a local path and edits apply on `/reload` or restart.
-Run extension tests before committing: `extensions/<name>/test/run.sh harness`
-(no network). Commit and push normally.
+Run `check` before committing; commit and push normally.
