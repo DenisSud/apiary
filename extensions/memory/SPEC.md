@@ -1,5 +1,11 @@
 # Agent Knowledge Memory System (AKMS) v0.1
 
+> **Superseded 2026-09-28 by v2** (`index.ts`). v2 keeps the file-based,
+> progressive-disclosure core but replaces the shared SOUL / memory.md /
+> category-index injection with per-agent SOUL + notes, a shared USER.md,
+> generated indexes, and `memory_search` / `memory_read` / `memory_write`.
+> Design record: `~/Bots/docs/memory.md`.
+
 > Vendored 2026-09-23 from the `su-memory` package (archived) as the original
 design record. The implementation deviates in one place: there is no `skills/`
 category — reusable procedures live in pi's skill system, not in memory. See
