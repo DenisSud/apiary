@@ -1,384 +1,570 @@
 /**
- * Pi Memory Extension
+ * memory — agent + shared notes with generated indexes.
  *
- * A general, file-based knowledge repository for the agent — the same
- * abstraction as Pi skills (markdown files + progressive disclosure), but for
- * durable context rather than procedures.
+ * v2 (2026-09-28). v1 injected SOUL.md, memory.md, three category indexes and
+ * a long policy into every agent, all from one shared clone; every agent was
+ * the same person and paid ~10.5 KB per turn. v2 keeps a tiny always-on core
+ * and puts everything else behind tools:
  *
- * Provenance: vendored 2026-09-23 from the `su-memory` package
- * (git.sudakov.site/DenisSud/memory, archived and frozen). It lives in the
- * base now because the repo it came from rejects pushes, and because every
- * bot needs it. The one change: `PI_MEMORY_DIR` lets an agent point at its
- * own clone instead of the shared `~/.pi/agent/memory`.
+ *   <agent dir>/SOUL.md   identity, human-authored, never auto-edited
+ *   <agent dir>/notes/    agent notes (frontmatter + body)
+ *   $PI_MEMORY_DIR/       shared notes; USER.md beside them
+ *   notes/index.md        generated from note frontmatter; never agent-edited
  *
- * Progressive disclosure:
- *   SOUL.md                              — human-authored identity/values
- *   memory.md                            — global entry point (< 2000 tokens)
- *   <category>/index.md                  — one-line index per file
- *   <category>/<file>.md                 — loaded on demand via `read`
+ * The base agent (no PI_CODING_AGENT_DIR) uses the shared repo for both, so
+ * it has one note set. A bot (PI_CODING_AGENT_DIR set) has its own SOUL and
+ * notes, and shares USER.md + the shared notes.
  *
- * Only the always-on files above are injected into the system prompt.
- * Everything else is lazy-loaded by the model with the built-in tools.
+ * Tools: memory_search, memory_read, memory_write. Writes default to the
+ * agent scope; `scope: "global"` writes a note another agent will need.
  *
- * Skills are deliberately NOT part of memory. Reusable procedures and
- * workflows continue to live in Pi's native skill system. Memory holds:
- *   preferences/  — stable user/agent operating info
- *   projects/     — current or recurring work
- *   knowledge/    — general reusable technical/domain knowledge
- *   archive/      — obsolete material, not loaded
- *
- * No custom tools. No embeddings. No RAG. Just files + git.
- * SPEC.md (this directory) is the original design record — it still lists a
- * `skills/` category, which the implementation deliberately dropped.
+ * Provenance: v1 vendored 2026-09-23 from the archived su-memory package.
+ * Design record: ~/Bots/docs/memory.md.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-// ── Paths ───────────────────────────────────────────────────────────────────
+// ── locations (lazy: tests set the env after import) ────────────────────────
 
 const HOME = process.env.HOME || process.env.USERPROFILE || "";
-const MEMORY_DIR = process.env.PI_MEMORY_DIR || path.join(HOME, ".pi/agent/memory");
-const SOUL_PATH = path.join(MEMORY_DIR, "SOUL.md");
-const MEMORY_PATH = path.join(MEMORY_DIR, "memory.md");
 
-const CATEGORIES = ["preferences", "projects", "knowledge"] as const;
-const ARCHIVE = "archive";
-
-// Soft caps on injected file size. These enforce the design invariant that the
-// always-loaded set stays small. If a file grows past its cap, only the head is
-// injected with a truncation marker, nudging the model to trim it.
-const CAPS = { soul: 4000, memory: 8000, index: 4000 } as const;
-
-// ── File templates (created on first run, never overwritten) ────────────────
-
-function soulTemplate(): string {
-  return [
-    "# SOUL",
-    "",
-    "You are a technical AI assistant.",
-    "Optimize for correctness and long-term usefulness.",
-    "Prefer understanding over quick answers.",
-    "",
-    "<!--",
-    "This file defines agent identity, values, and operating principles.",
-    "It is human-authored. The agent must never modify it automatically.",
-    "-->",
-    "",
-  ].join("\n");
+function sharedDir(): string {
+  return path.resolve(process.env.PI_MEMORY_DIR || path.join(HOME, ".pi/agent/memory"));
 }
 
-function memoryTemplate(): string {
-  return [
-    "# User Context",
-    "",
-    "<!-- Short summary of who the user is and what they work on. -->",
-    "",
-    "# Important Preferences",
-    "",
-    "<!-- Global preferences that should always be in context. Keep concise. -->",
-    "",
-    "# Available Memory",
-    "",
-    "## Preferences",
-    "Stable information about how the user and agent operate.",
-    "See preferences/index.md",
-    "",
-    "## Projects",
-    "Active projects and architecture notes.",
-    "See projects/index.md",
-    "",
-    "## Knowledge",
-    "Long-term technical knowledge.",
-    "See knowledge/index.md",
-    "",
-  ].join("\n");
+function agentDir(): string {
+  return path.resolve(process.env.PI_CODING_AGENT_DIR || sharedDir());
 }
 
-function indexTemplate(category: string, blurb: string): string {
-  return [
-    `# ${category.charAt(0).toUpperCase() + category.slice(1)}`,
-    "",
-    blurb,
-    "",
-    "<!--",
-    "One entry per file in this directory. Keep to:",
-    "  filename, one-line description, when to use. Nothing else.",
-    "",
-    "Example:",
-    "## cuda-troubleshooting.md",
-    "CUDA initialization failures and driver checks.",
-    "Use when:",
-    "- CUDA init errors",
-    "- driver/torch version mismatch",
-    "-->",
-    "",
-  ].join("\n");
+export type Scope = "agent" | "global";
+
+interface Root {
+  kind: Scope;
+  /** The repo root: holds SOUL.md / USER.md / git. */
+  dir: string;
+  /** Where notes are scanned. Bot notes live in <dir>/notes; the shared repo
+   *  is itself the notes folder, so its existing paths keep working. */
+  notes: string;
 }
 
-const INDEX_BLURBS: Record<(typeof CATEGORIES)[number], string> = {
-  preferences: "Stable information about how the user/agent operates.",
-  projects: "Current or recurring work.",
-  knowledge: "General reusable technical/domain knowledge.",
-};
+/**
+ * The note sets. A bot has two: its own and the shared one. The base agent has
+ * a single set (agent dir == shared dir), registered as "agent".
+ */
+function roots(): Root[] {
+  const agent = agentDir();
+  const shared = sharedDir();
+  const list: Root[] = [];
+  const seen = new Set<string>();
 
-function archiveReadme(): string {
-  return [
-    "# Archive",
-    "",
-    "Obsolete memory moved here to keep it out of indexes and active context.",
-    "Files here are not loaded automatically.",
-    "",
-  ].join("\n");
+  const add = (kind: Scope, dir: string, notes: string) => {
+    const key = path.resolve(notes);
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push({ kind, dir, notes: key });
+  };
+
+  if (agent === shared) {
+    // Base agent: one generalist set, the shared repo.
+    add("agent", agent, agent);
+  } else {
+    add("agent", agent, path.join(agent, "notes"));
+    add("global", shared, shared);
+  }
+  return list;
 }
 
-function gitignore(): string {
-  return ["*.swp", "*~", ".DS_Store", ""].join("\n");
+function rootFor(kind: Scope): Root {
+  const all = roots();
+  return all.find((r) => r.kind === kind) ?? all[0];
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+function rootsFor(scope: Scope | "all"): Root[] {
+  const all = roots();
+  if (scope === "all") return all;
+  const match = all.filter((r) => r.kind === scope);
+  return match.length > 0 ? match : all;
+}
 
-/** Read a file, truncating with a marker if it exceeds the cap. */
-function readCapped(p: string, cap: number): string {
+// ── frontmatter ─────────────────────────────────────────────────────────────
+
+export interface Meta {
+  title: string;
+  description: string;
+  tags: string[];
+  created?: string;
+  updated?: string;
+}
+
+function unquote(value: string): string {
+  const v = value.trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    return v.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  return v;
+}
+
+function quoteIfNeeded(value: string): string {
+  return /^[\w][^{}[\]#:"']*$/.test(value) ? value : `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function parseList(value: string): string[] {
+  const v = value.trim();
+  if (v.startsWith("[") && v.endsWith("]")) {
+    return v
+      .slice(1, -1)
+      .split(",")
+      .map((s) => unquote(s))
+      .filter(Boolean);
+  }
+  return v ? [unquote(v)] : [];
+}
+
+/** Minimal YAML-subset parser: flat `key: value`, arrays, quoted strings. */
+export function parseFrontmatter(text: string): { meta: Record<string, string | string[]>; body: string } {
+  const lines = text.split(/\r?\n/);
+  const meta: Record<string, string | string[]> = {};
+  if (lines[0] !== "---") return { meta, body: text };
+
+  let i = 1;
+  for (; i < lines.length; i++) {
+    if (lines[i] === "---") break;
+    const m = lines[i].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (m) meta[m[1]] = /^\s*\[/.test(m[2]) ? parseList(m[2]) : unquote(m[2]);
+  }
+  const body = lines.slice(i + 1).join("\n").replace(/^\s*\n/, "");
+  return { meta, body };
+}
+
+function firstHeading(body: string): string | undefined {
+  return body.match(/^#\s+(.+)$/m)?.[1]?.trim();
+}
+
+function firstLine(body: string): string | undefined {
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#") || line.startsWith("<!--") || line.startsWith(">")) continue;
+    return line.length > 240 ? `${line.slice(0, 237)}…` : line;
+  }
+  return undefined;
+}
+
+function humanize(file: string): string {
+  return path
+    .basename(file, ".md")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function metaOf(text: string, rel: string): Meta {
+  const { meta, body } = parseFrontmatter(text);
+  const tags = Array.isArray(meta.tags) ? meta.tags : typeof meta.tags === "string" ? [meta.tags] : [];
+  return {
+    title: (typeof meta.title === "string" && meta.title) || firstHeading(body) || humanize(rel),
+    description: (typeof meta.description === "string" && meta.description) || firstLine(body) || "",
+    tags,
+    created: typeof meta.created === "string" ? meta.created : undefined,
+    updated: typeof meta.updated === "string" ? meta.updated : undefined,
+  };
+}
+
+// ── scanning ────────────────────────────────────────────────────────────────
+
+export interface NoteEntry extends Meta {
+  root: Scope;
+  /** Path relative to the root's notes folder. */
+  path: string;
+  /** ISO date, from frontmatter `updated` or the file mtime. */
+  modified: string;
+  body: string;
+}
+
+const SKIP_FILES = new Set(["index.md", "USER.md", "SOUL.md", "memory.md", "README.md"]);
+const SKIP_DIRS = new Set([".git", "node_modules", "archive", "sessions", "experiments"]);
+
+function walk(dir: string, base: string, out: string[]): void {
+  let entries: fs.Dirent[];
   try {
-    let s = fs.readFileSync(p, "utf-8");
-    if (s.length > cap) {
-      s =
-        s.slice(0, cap) +
-        `\n\n…[truncated: ${s.length - cap} chars beyond ${cap}. Trim this file.]`;
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      walk(full, base, out);
+    } else if (entry.isFile() && entry.name.endsWith(".md") && !SKIP_FILES.has(entry.name)) {
+      out.push(path.relative(base, full));
     }
-    return s.trim() || "(empty)";
+  }
+}
+
+function dateOf(root: Root, rel: string): string {
+  try {
+    return fs.statSync(path.join(root.notes, rel)).mtime.toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+
+export function scanRoot(root: Root): NoteEntry[] {
+  const files: string[] = [];
+  walk(root.notes, root.notes, files);
+  const entries: NoteEntry[] = [];
+  for (const rel of files) {
+    let text: string;
+    try {
+      text = fs.readFileSync(path.join(root.notes, rel), "utf-8");
+    } catch {
+      continue;
+    }
+    const meta = metaOf(text, rel);
+    entries.push({
+      ...meta,
+      root: root.kind,
+      path: rel,
+      modified: meta.updated || dateOf(root, rel),
+      body: parseFrontmatter(text).body,
+    });
+  }
+  entries.sort((a, b) => b.modified.localeCompare(a.modified) || a.title.localeCompare(b.title));
+  return entries;
+}
+
+/** Regenerate a root's index.md. Generated only — the agent never edits it. */
+export function writeIndex(root: Root): void {
+  fs.mkdirSync(root.notes, { recursive: true });
+  const entries = scanRoot(root);
+  const lines = [
+    "<!-- generated by the memory extension; do not edit — edit the notes -->",
+    "",
+    `# Notes (${entries.length})`,
+    "",
+  ];
+  for (const e of entries) {
+    const tags = e.tags.length > 0 ? ` {${e.tags.join(", ")}}` : "";
+    lines.push(`- [${e.title}](${e.path}) — ${e.description}${tags} · ${e.modified}`);
+  }
+  fs.writeFileSync(path.join(root.notes, "index.md"), `${lines.join("\n")}\n`, "utf-8");
+}
+
+// ── tools ───────────────────────────────────────────────────────────────────
+
+const text = (t: string) => [{ type: "text" as const, text: t }];
+
+function match(entry: NoteEntry, terms: string[], tags: string[]): boolean {
+  if (tags.length > 0) {
+    const own = entry.tags.map((t) => t.toLowerCase());
+    if (!tags.every((t) => own.some((o) => o === t.toLowerCase()))) return false;
+  }
+  if (terms.length === 0) return true;
+  const haystack = `${entry.title}\n${entry.description}\n${entry.tags.join(" ")}\n${entry.path}\n${entry.body}`.toLowerCase();
+  return terms.every((t) => haystack.includes(t));
+}
+
+function safePath(root: Root, rel: string): string {
+  const clean = rel.replace(/\\/g, "/").replace(/^\/+/, "");
+  const abs = path.resolve(root.notes, clean);
+  const prefix = root.notes.endsWith(path.sep) ? root.notes : root.notes + path.sep;
+  if (abs !== root.notes && !abs.startsWith(prefix)) {
+    throw new Error(`memory: path escapes the notes folder: ${rel}`);
+  }
+  return abs;
+}
+
+function slug(title: string): string {
+  const s = title
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+    .slice(0, 64);
+  return s || "note";
+}
+
+function serialize(meta: Meta, body: string): string {
+  const lines = ["---", `title: ${quoteIfNeeded(meta.title)}`, `description: ${quoteIfNeeded(meta.description)}`];
+  if (meta.tags.length > 0) lines.push(`tags: [${meta.tags.map(quoteIfNeeded).join(", ")}]`);
+  if (meta.created) lines.push(`created: ${meta.created}`);
+  if (meta.updated) lines.push(`updated: ${meta.updated}`);
+  lines.push("---", "", body.trim(), "");
+  return lines.join("\n");
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ── first-run setup ─────────────────────────────────────────────────────────
+
+const USER_TEMPLATE = [
+  "# Denis",
+  "",
+  "<!-- Shared profile: who Denis is, his environment, global preferences.",
+  "     Every agent reads this. Change it rarely, through memory_write with",
+  "     scope \"global\", and say so in chat. -->",
+  "",
+  "## Identity",
+  "",
+  "## Environment",
+  "",
+  "## How to work with him",
+  "",
+].join("\n");
+
+function runGit(dir: string, args: string[]): { ok: boolean; out: string; err: string } {
+  try {
+    const out = execFileSync("git", args, { cwd: dir, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
+    return { ok: true, out: out.trim(), err: "" };
+  } catch (e: any) {
+    return { ok: false, out: (e?.stdout ?? "").toString().trim(), err: ((e?.stderr ?? "").toString().trim() || e?.message || "").trim() };
+  }
+}
+
+function ensureStructure(): void {
+  const shared = sharedDir();
+  const agent = agentDir();
+
+  fs.mkdirSync(shared, { recursive: true });
+  if (agent !== shared) fs.mkdirSync(path.join(agent, "notes"), { recursive: true });
+  for (const root of roots()) fs.mkdirSync(root.notes, { recursive: true });
+
+  const user = path.join(shared, "USER.md");
+  if (!fs.existsSync(user) && !fs.existsSync(path.join(shared, "memory.md"))) {
+    fs.writeFileSync(user, USER_TEMPLATE, "utf-8");
+  }
+  const soul = path.join(shared, "SOUL.md");
+  if (!fs.existsSync(soul) && agent === shared) {
+    fs.writeFileSync(
+      soul,
+      "# SOUL\n\n<!-- Identity, voice, values. Human-authored; the agent never edits this file. -->\n",
+      "utf-8",
+    );
+  }
+
+  // A fresh shared root becomes a git repo, like v1 did.
+  if (!fs.existsSync(path.join(shared, ".git"))) {
+    const res = runGit(shared, ["init", "--quiet"]);
+    if (res.ok) {
+      if (!runGit(shared, ["config", "user.email"]).ok) runGit(shared, ["config", "user.email", "pi-memory@local"]);
+      if (!runGit(shared, ["config", "user.name"]).ok) runGit(shared, ["config", "user.name", "pi-memory"]);
+      runGit(shared, ["add", "-A"]);
+      runGit(shared, ["commit", "-m", "Initialize memory"]);
+    }
+  }
+}
+
+// ── system-prompt block ─────────────────────────────────────────────────────
+
+function readCapped(file: string, cap: number): string {
+  try {
+    const content = fs.readFileSync(file, "utf-8").trim();
+    if (!content) return "(empty)";
+    return content.length > cap ? `${content.slice(0, cap)}\n…[truncated ${content.length - cap} chars]` : content;
   } catch {
     return "(missing)";
   }
 }
 
-/** Run a git command inside the memory repo. */
-function runGit(args: string[]): { ok: boolean; out: string; err: string } {
-  try {
-    const out = execFileSync("git", args, {
-      cwd: MEMORY_DIR,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { ok: true, out: out.trim(), err: "" };
-  } catch (e: any) {
-    return {
-      ok: false,
-      out: (e?.stdout ?? "").toString().trim(),
-      err: ((e?.stderr ?? "").toString().trim() || e?.message || String(e)).trim(),
-    };
-  }
+function soulFile(): string {
+  const agent = agentDir();
+  const local = path.join(agent, "SOUL.md");
+  if (fs.existsSync(local)) return local;
+  return path.join(sharedDir(), "SOUL.md");
 }
 
-/** Recursively list the memory repo (excluding .git/node_modules) with sizes. */
-function listTree(): string {
-  const lines: string[] = [];
-  const walk = (dir: string, prefix: string) => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    entries = entries
-      .filter((e) => e.name !== ".git" && e.name !== "node_modules")
-      .sort((a, b) => {
-        // directories first
-        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
-    for (const e of entries) {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) {
-        lines.push(`${prefix}${e.name}/`);
-        walk(full, prefix + "  ");
-      } else {
-        let size = 0;
-        try {
-          size = fs.statSync(full).size;
-        } catch {}
-        lines.push(`${prefix}${e.name}  (${size}B)`);
-      }
-    }
-  };
-  walk(MEMORY_DIR, "");
-  return lines.join("\n");
+function userFile(): string {
+  const shared = sharedDir();
+  const user = path.join(shared, "USER.md");
+  if (fs.existsSync(user)) return user;
+  return path.join(shared, "memory.md");
 }
-
-// ── First-run setup ─────────────────────────────────────────────────────────
-
-function ensureStructure(): void {
-  fs.mkdirSync(MEMORY_DIR, { recursive: true });
-  for (const cat of CATEGORIES) fs.mkdirSync(path.join(MEMORY_DIR, cat), { recursive: true });
-  fs.mkdirSync(path.join(MEMORY_DIR, ARCHIVE), { recursive: true });
-
-  if (!fs.existsSync(SOUL_PATH)) fs.writeFileSync(SOUL_PATH, soulTemplate(), "utf-8");
-  if (!fs.existsSync(MEMORY_PATH)) fs.writeFileSync(MEMORY_PATH, memoryTemplate(), "utf-8");
-  for (const cat of CATEGORIES) {
-    const idx = path.join(MEMORY_DIR, cat, "index.md");
-    if (!fs.existsSync(idx)) fs.writeFileSync(idx, indexTemplate(cat, INDEX_BLURBS[cat]), "utf-8");
-  }
-  const archiveReadmePath = path.join(MEMORY_DIR, ARCHIVE, "README.md");
-  if (!fs.existsSync(archiveReadmePath)) fs.writeFileSync(archiveReadmePath, archiveReadme(), "utf-8");
-
-  const gi = path.join(MEMORY_DIR, ".gitignore");
-  if (!fs.existsSync(gi)) fs.writeFileSync(gi, gitignore(), "utf-8");
-
-  // Make the memory dir its own git repo.
-  if (!fs.existsSync(path.join(MEMORY_DIR, ".git"))) {
-    runGit(["init", "--quiet"]);
-    // Local identity fallback so commits work without a global git identity.
-    if (!runGit(["config", "user.email"]).ok)
-      runGit(["config", "user.email", "pi-memory@local"]);
-    if (!runGit(["config", "user.name"]).ok) runGit(["config", "user.name", "pi-memory"]);
-  }
-
-  // Establish a baseline commit on a fresh repo so `git log` is usable.
-  if (!runGit(["log", "-1", "--format=%H"]).ok) {
-    runGit(["add", "-A"]);
-    runGit(["commit", "-m", "Initialize memory repository"]);
-  }
-}
-
-// ── Injected policy (kept tight; ~300 tokens) ───────────────────────────────
 
 function policyText(): string {
+  const agent = agentDir();
+  const shared = sharedDir();
+  const agentNotes = agent === shared ? shared : path.join(agent, "notes");
   return [
-    "You maintain a persistent, git-versioned knowledge repository.",
-    `Location: ${MEMORY_DIR}`,
+    "Memory is a few files, not a database:",
     "",
-    "Goal: reduce future reasoning cost. Store reusable knowledge, not transcripts.",
-    "",
-    "In context now (always loaded):",
-    "  SOUL.md        — agent identity/values (human-authored; never modify).",
-    "  memory.md      — global entry point (keep < 2000 tokens).",
-    "  preferences/index.md, projects/index.md, knowledge/index.md — category indexes.",
-    "Everything else is loaded on demand with `read`.",
-    "",
-    "Editing: use `edit`/`write` on file paths under the repository. Use `bash` for",
-    "git in that dir. Key commands: `git add`, `git commit -m`, `git log`, `git diff`,",
-    "`git revert`, `git pull --rebase`, `git push`.",
-    "",
-    "Sync workflow (this repo is shared across devices via a remote):",
-    "  - Before starting a task: `git pull --rebase origin main`",
-    "  - After committing changes: `git push origin main`",
-    "  - If pull fails with conflicts: resolve them in the files, then",
-    "    `git add` the resolved files and `git rebase --continue`.",
-    "",
-    "Categories:",
-    "  preferences/ — stable info about how the user/agent operate.",
-    "  projects/    — current or recurring work (goal, architecture, decisions, state).",
-    "  knowledge/   — general reusable technical/domain knowledge.",
-    "  archive/     — obsolete files moved out of active context.",
-    "Reusable procedures and workflows belong in Pi skills, NOT in memory.",
-    "",
-    "Write memory only when future work will likely become easier because it exists:",
-    "  solved hard problems      -> knowledge/",
-    "  repeated user preferences -> preferences/",
-    "  project decisions/state   -> projects/",
-    "Do NOT store conversation summaries, logs, or transient thoughts.",
-    "",
-    "Keep each index.md to: filename, one-line description, when-to-use. Nothing else.",
-    "Refactor outdated info, split large files, move stale files to archive/.",
-    'Commit with short descriptive messages (e.g. "Add CUDA troubleshooting notes").',
-    "",
-    "Before finishing significant tasks: review for new preferences, decisions, or",
-    "solved problems, and update memory if they reduce future effort.",
+    `- Agent notes: ${agentNotes}`,
+    `- Shared notes: ${shared}`,
+    "- SOUL.md is who you are. Read-only to you; never edit it.",
+    "- USER.md is the shared profile of Denis. Read it; update it rarely.",
+    "- Everything else is a note with frontmatter. Title + description are the",
+    "  index; the body is read only when the description matches.",
+    "- memory_search before researching anything; memory_read to load a note;",
+    "  memory_write to create or update one. Update the existing note when the",
+    "  topic exists.",
+    "- Write durable findings, decisions and state as notes — never transcripts",
+    "  or transient thoughts.",
+    '- Default scope is "agent". Use scope "global" only when another agent',
+    "  needs the fact (shared projects, machines, Denis's profile, cross-track",
+    "  deadlines), and say in chat what you moved there.",
+    "- Mark a replaced note `status: superseded` with a link instead of",
+    "  deleting it.",
+    "- Commit memory changes with a short message; pull --rebase before writing",
+    "  and push after when the root is shared.",
   ].join("\n");
 }
 
-/** Assemble the always-on memory block appended to the system prompt. */
-function buildMemoryContext(): string {
-  const parts: string[] = ["## Memory", ""];
-  parts.push(`Repository: ${MEMORY_DIR} (git-versioned)`, "");
-
-  parts.push("=== SOUL.md ===");
-  parts.push(readCapped(SOUL_PATH, CAPS.soul));
-  parts.push("");
-
-  parts.push("=== memory.md ===");
-  parts.push(readCapped(MEMORY_PATH, CAPS.memory));
-  parts.push("");
-
-  for (const cat of CATEGORIES) {
-    parts.push(`=== ${cat}/index.md ===`);
-    parts.push(readCapped(path.join(MEMORY_DIR, cat, "index.md"), CAPS.index));
-    parts.push("");
-  }
-
-  parts.push("=== Memory Policy ===");
-  parts.push(policyText());
-
+export function buildMemoryContext(): string {
+  const parts = [
+    "## Memory",
+    "",
+    policyText(),
+    "",
+    "=== SOUL.md ===",
+    readCapped(soulFile(), 6000),
+    "",
+    "=== USER.md ===",
+    readCapped(userFile(), 8000),
+  ];
   return parts.join("\n");
 }
 
-// ── Extension entry point ───────────────────────────────────────────────────
+// ── extension ───────────────────────────────────────────────────────────────
 
-export default function (pi: ExtensionAPI) {
+export default function memory(pi: ExtensionAPI) {
   ensureStructure();
+  for (const root of roots()) {
+    try {
+      writeIndex(root);
+    } catch {
+      // A broken note must not take the session down; index regenerates later.
+    }
+  }
 
-  // Inject the always-on memory context (progressive disclosure) before each
-  // agent turn. Only SOUL.md, memory.md, and the category indexes are injected;
-  // all other files are loaded on demand by the model.
-  pi.on("before_agent_start", async (event) => {
-    return { systemPrompt: event.systemPrompt + "\n\n" + buildMemoryContext() };
+  pi.on("before_agent_start", (event) => {
+    return { systemPrompt: `${event.systemPrompt}\n\n${buildMemoryContext()}` };
   });
 
-  // /memory — inspect or commit the memory repository.
-  pi.registerCommand("memory", {
-    description: "Manage the memory repository (/memory [commit <msg>|log|push|pull])",
-    handler: async (args, ctx) => {
-      const tokens = args.trim().split(/\s+/).filter(Boolean);
-      const sub = tokens[0];
+  pi.registerTool({
+    name: "memory_search",
+    label: "Memory Search",
+    description:
+      "Search your notes and the shared notes by text or tags. Returns note titles, descriptions, tags and paths; load one with memory_read. Use before researching anything, and when looking for an earlier decision or state.",
+    parameters: Type.Object({
+      query: Type.Optional(Type.String({ description: "Words to match anywhere in title, description, path, tags or body" })),
+      tags: Type.Optional(Type.Array(Type.String({ description: "Tag that must be present (all must match)" }))),
+      scope: Type.Optional(
+        Type.Union([Type.Literal("agent"), Type.Literal("global"), Type.Literal("all")], {
+          description: 'Where to search (default "all": your notes plus the shared ones)',
+        }),
+      ),
+      limit: Type.Optional(Type.Number({ description: "Maximum results (default 20, max 50)" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const terms = (params.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+      const tags = params.tags ?? [];
+      const limit = Math.min(50, Math.max(1, Math.round(params.limit ?? 20)));
+      const matches: NoteEntry[] = [];
+      for (const root of rootsFor(params.scope ?? "all")) {
+        for (const entry of scanRoot(root)) {
+          if (match(entry, terms, tags)) matches.push(entry);
+        }
+      }
+      matches.sort((a, b) => b.modified.localeCompare(a.modified) || a.title.localeCompare(b.title));
+      const shown = matches.slice(0, limit);
 
-      if (sub === "commit") {
-        const msg = tokens.slice(1).join(" ").trim() || "Update memory";
-        runGit(["add", "-A"]);
-        const res = runGit(["commit", "-m", msg]);
-        if (res.ok) ctx.ui.notify(`memory: committed\n${res.out}`, "info");
-        else ctx.ui.notify(`memory: ${res.err || "nothing to commit"}`, "info");
-        return;
+      const formatted =
+        shown.length === 0
+          ? `No notes match${params.query ? ` "${params.query}"` : ""}.`
+          : shown
+              .map((e) => {
+                const tags = e.tags.length > 0 ? ` {${e.tags.join(", ")}}` : "";
+                return `- ${e.root}:${e.path} — ${e.title} — ${e.description}${tags} · ${e.modified}`;
+              })
+              .join("\n") + (matches.length > limit ? `\n… ${matches.length - limit} more` : "");
+
+      return {
+        content: text(formatted),
+        details: { count: matches.length, entries: shown.map((e) => ({ root: e.root, path: e.path, title: e.title })) },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "memory_read",
+    label: "Memory Read",
+    description: "Read one note by root and path, as returned by memory_search.",
+    parameters: Type.Object({
+      root: Type.Union([Type.Literal("agent"), Type.Literal("global")], { description: "Which note set" }),
+      path: Type.String({ description: "Path relative to the notes folder, from memory_search" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const root = rootFor(params.root);
+      const abs = safePath(root, params.path);
+      if (!fs.existsSync(abs)) throw new Error(`memory_read: no such note: ${params.root}:${params.path}`);
+      return {
+        content: text(fs.readFileSync(abs, "utf-8")),
+        details: { root: root.kind, path: params.path },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "memory_write",
+    label: "Memory Write",
+    description:
+      "Create or update a note with frontmatter (title, description, tags). Description is the retrieval key — write it as \"use when…\". Defaults to your own notes; scope \"global\" writes to the shared set when another agent will need the fact, and you should say so in chat.",
+    parameters: Type.Object({
+      title: Type.String({ description: "Short note title" }),
+      description: Type.String({ description: 'One line: when this note is useful ("use when…")' }),
+      body: Type.String({ description: "The note, markdown" }),
+      tags: Type.Optional(Type.Array(Type.String())),
+      scope: Type.Optional(Type.Union([Type.Literal("agent"), Type.Literal("global")], { description: 'Default "agent"' })),
+      path: Type.Optional(
+        Type.String({ description: "Existing note path to update, or a new path (e.g. projects/work.md); default: slug of the title" }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const root = rootFor(params.scope ?? "agent");
+      const tags = params.tags ?? [];
+      if (!params.title.trim()) throw new Error("memory_write: title is required");
+      if (!params.description.trim()) throw new Error("memory_write: description is required");
+
+      let rel: string;
+      let created: string | undefined;
+      if (params.path) {
+        rel = params.path.replace(/\\/g, "/").replace(/^\/+/, "");
+        if (!rel.endsWith(".md")) rel += ".md";
+        const abs = safePath(root, rel);
+        if (fs.existsSync(abs)) {
+          const existing = parseFrontmatter(fs.readFileSync(abs, "utf-8")).meta;
+          created = typeof existing.created === "string" ? existing.created : undefined;
+        }
+      } else {
+        rel = `${slug(params.title)}.md`;
+        let candidate = rel;
+        let n = 2;
+        while (fs.existsSync(safePath(root, candidate))) candidate = `${rel.replace(/\.md$/, "")}-${n++}.md`;
+        rel = candidate;
       }
 
-      if (sub === "log") {
-        const res = runGit(["log", "--oneline", "-10"]);
-        ctx.ui.notify(`memory log\n${res.out || res.err || "no commits"}`, "info");
-        return;
-      }
+      const abs = safePath(root, rel);
+      const meta: Meta = {
+        title: params.title.trim(),
+        description: params.description.trim(),
+        tags: tags.map((t) => t.trim()).filter(Boolean),
+        created: created ?? today(),
+        updated: today(),
+      };
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, serialize(meta, params.body), "utf-8");
+      writeIndex(root);
 
-      if (sub === "push") {
-        const res = runGit(["push", "origin", "main"]);
-        if (res.ok) ctx.ui.notify(`memory: pushed\n${res.out || res.err}`, "info");
-        else ctx.ui.notify(`memory push failed: ${res.err}`, "error");
-        return;
-      }
-
-      if (sub === "pull") {
-        const res = runGit(["pull", "--rebase", "origin", "main"]);
-        if (res.ok) ctx.ui.notify(`memory: pulled\n${res.out || res.err}`, "info");
-        else ctx.ui.notify(`memory pull failed: ${res.err}`, "error");
-        return;
-      }
-
-      // default: status
-      const status = runGit(["status", "--short"]);
-      const log = runGit(["log", "--oneline", "-5"]);
-      const tree = listTree();
-      const report = [
-        `memory @ ${MEMORY_DIR}`,
-        "",
-        tree,
-        "",
-        "--- status ---",
-        status.out || status.err || "clean",
-        "",
-        "--- recent ---",
-        log.out || log.err || "no commits",
-      ].join("\n");
-      ctx.ui.notify(report, "info");
+      const verb = created ? "updated" : "wrote";
+      return {
+        content: text(`${verb} ${root.kind}:${rel} — commit it when it matters.`),
+        details: { root: root.kind, path: rel },
+      };
     },
   });
 }
