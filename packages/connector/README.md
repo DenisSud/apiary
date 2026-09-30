@@ -113,9 +113,10 @@ points `PI_CONNECTOR_DIR` and `PI_BOTS_HOME` at a temp dir.
 
 ## Launcher (S2a)
 
-`bin/pi-bot` becomes a thin shell script: resolve the repo root and
+`packages/connector/bin/pi-bot` becomes a thin shell script: resolve the repo root and
 `exec node packages/connector/src/bin.ts "$@"`. All verbs live in TypeScript;
-`list` is `listBots()`. `new` still delegates to `pi-bot-new`.
+`list` is `listBots()`. `new`, `show`, `archive`, `unarchive` and `rm` call
+`packages/pi-manager`.
 
 ```
 pi-bot attach <bot> [--new]   ensure server, resolve session, run the client
@@ -148,10 +149,17 @@ Spawn (detached, `cwd` = bot dir):
 node --import <file://…/src/experimental/source-resolver.ts> \
      <checkout>/packages/coding-agent/src/experimental/cli.ts server \
      --server-id <uuid>
-env: PI_EXPERIMENTAL=1 PI_CODING_AGENT_DIR=<bot> PI_MEMORY_DIR=<bot>/memory \
-     PI_SERVER_DIR=<dir>
+env: PI_EXPERIMENTAL=1 PI_CODING_AGENT_DIR=<bot> PI_SERVER_DIR=<dir> \
+     PI_BOT_NAME=<bot> PI_ADMIN_SETTINGS=<bot>/.admin-settings.json \
+     PI_REGISTRY_DIR=<checkout>/registry
 stdio -> log fd, detached, unref
 ```
+
+`spawnServer` is `localServerSpawn`, the default `ServerSpawner`; the spawn
+step is the seam a containerized deployment replaces (`docker exec`, nsenter)
+without touching the state handling around it. `PI_ADMIN_SETTINGS` carries the
+admin layer the forked server merges over global + project settings;
+`PI_REGISTRY_DIR` tells the agent where the package registry is mounted.
 
 This is exactly the argv the checkout's `pi-test.sh` builds, minus the shell:
 we call `node` directly so the pid in the route **is** the server process and
@@ -239,9 +247,9 @@ run TUI ──switch target──> dispose runtime ──> open runtime for targ
 Each iteration stops the TUI, disposes the client runtime and facets, and calls
 `runClientTui` again with a rewritten command (`--connect unix://<socket>`,
 `--session-id <id>`). The loop also rewrites `PI_BOT_NAME`, `PI_CODING_AGENT_DIR`,
-`PI_MEMORY_DIR`, and `PI_SERVER_DIR` for the new bot, so the next TUI reads the
-right settings, theme, and agent dir. No process exec, no process chain, and the
-teardown path is the one the TUI already uses when the user quits.
+and `PI_SERVER_DIR` for the new bot, so the next TUI reads the right settings,
+theme, and agent dir. No process exec, no process chain, and the teardown path
+is the one the TUI already uses when the user quits.
 
 A switch target comes from `pi-bot resolve --json [--new] <bot>` — the same
 process boundary the launcher uses, so the fork never reads the state files or
@@ -266,7 +274,7 @@ The launcher adds two variables to the client env:
 
 ```
 PI_BOT_NAME  the bot this client was started for (the current bot)
-PI_BOT_BIN   absolute path to bin/pi-bot
+PI_BOT_BIN   absolute path to `packages/connector/bin/pi-bot`
 ```
 
 Without `PI_BOT_NAME` (fork client started by hand) `/bot` still works; `/new`
@@ -311,81 +319,70 @@ pi-client + WebSocket byte transport   opaque byte relay + static files
 
 ### Bridge
 
-`bin/pi-bots-web [--host <host>] [--port <port>] [--web-dir <path>]`
+`packages/connector/bin/pi-bots-web [--host <host>] [--port <port>] [--web-dir <path>]`
 (default `127.0.0.1:8787`, web root `packages/web/dist`).
 
-- `GET /api/bots` → `{bots: [{name, dir, running, serverId, pid, startedAt,
-  lastSession}]}`. Reads the state files only; it never starts a server.
+- `GET /api/bots` → `{bots: [{name, dir, archived, setup, running, serverId, pid,
+  startedAt, lastSession}]}`. Reads the state files only; it never starts a
+  server. `setup` is true while the agent still has to commit `init`.
+- Bot management (`packages/pi-manager` owns the lifecycle): `POST /api/bots`
+  `{name}` (optionally `packages`, `thinking`) → 201 detail ·
+  `GET /api/bots/:name` · `PATCH /api/bots/:name` (`packages`, `thinking`) ·
+  `POST /api/bots/:name/archive|unarchive|stop` ·
+  `POST /api/bots/:name/reload` (stop + `ensureInvariants` + clear the apply
+  marker) · `DELETE /api/bots/:name` with `{confirm: "<name>"}` → 204. JSON
+  bodies cap at 64 KiB; errors are `{error}` with 400/404/409/500. Archive
+  and delete stop the server first.
+- Provider auth (`packages/auth`): `GET /api/auth/providers` ·
+  `POST /api/auth/login` `{provider, type}` → 201 `{loginId}` ·
+  `WS /api/auth/login/:id` frames (`notify`, `prompt`, `done`, `error`); the
+  client answers with `{type:"input", id, value}` or `{type:"abort"}`, a WS
+  close aborts the login · `POST /api/auth/logout`. The flow starts when the
+  socket attaches; an unattached login is dropped after 60 s.
 - `GET /ws?bot=<name>[&session=<uuid>]` → 101 upgrade, then the bot server's
   byte stream. Resolving the target runs the launcher, so a stopped bot gets
-  started. Rejections: 400 invalid bot or session, 502 launcher failure.
+  started, and a pending apply (from the post-commit hook) is reconciled
+  before the server starts. Rejections: 400 invalid bot or session, 502
+  launcher failure.
 - Static files under the web root; path escapes are rejected, and a missing
   build answers 503 with the build command.
 - Text frames close the channel; the transport carries bytes only.
+- The apply watcher polls every second: a bot with a post-commit `.apply`
+  marker and no active relay is stopped and reconciled; a busy bot is left
+  for its next attach (`resolveAttach` applies the marker first).
 - Backpressure: the upstream socket pauses while a ws frame is buffered and
   resumes from the send callback; the ws reader pauses while the unix socket
   write buffer is full.
 
 ### App
 
+The browser app itself is documented in [`packages/web/README.md`](../web/README.md)
+(modules, rendering rules, design reference, tests). From this package's side it
+is a static build in `packages/web/dist` plus one WebSocket per session:
+
 ```
 bun install                      # once, from the repo root
 bun run build                    # bundle the browser app to packages/web/dist
-bun run test                     # connector tests
-bin/pi-bots-web                  # serve app, /api/bots, and /ws
+bun run test                     # pi-manager, auth, connector + web unit tests
+packages/connector/bin/pi-bots-web  # serve app, /api/bots, and /ws
 ```
-
-The app lists bots (blobatar icon per name), opens the last session or a new
-one, and renders the replicated transcript through AgentController. Session
-actions: stop aborts the open operation, compact summarizes the history while
-idle, new starts a fresh session. The prompt and the sidebar busy marker
-follow the snapshot's operation, so they are right for every turn.
-
-Rendering, in the order a turn produces it:
-
-- Assistant text is markdown (marked, with raw HTML dropped and links
-  rewritten), user text is plain in a gray bubble.
-- Thinking is a collapsed step line. A turn with nothing to show yet prints
-  an animated `thinking` line from the snapshot, not a placeholder kept in
-  the DOM.
-- A tool call is one compact `bash: <command>`-style line, with its arguments
-  and its result nested in the same `<details>`; a running tool shows a
-  spinner from `operation.runningTools`.
-- Entries are appended, never rebuilt: opening a `<details>` survives the
-  next snapshot, new entries fade in, and the streaming answer's caret keeps
-  blinking because only its text node is updated. Compaction and session
-  switches rebuild, because the transcript is replaced.
-- The reader is followed only while they are at the bottom; scrolling away
-  reveals a `↓ latest` button.
-- While a turn runs the composer sends a steer, and the pending message shows
-  as a `steering` bubble from the snapshot's `queues`; stop hands the queued
-  text back to the composer.
-
-The look follows the Grok Bot app (flaviocopes.com/grok-bot): light surfaces,
-system sans font, blobatar avatars, gray pills, right-aligned user bubbles,
-plain assistant text, tool results as gray panels, centered system notes.
-The header blobatar is the live one: it breathes on hover and its eyes follow
-the pointer (`blobatar/gaze`); the list icons are the same blobatars without a
-gaze driver.
-
-Known gaps: no reconnect (a dropped bridge socket needs a manual reload), no
-session picker beyond the last session, no diff rendering in tool results,
-and no turn grouping (`Worked for 2m · 5 steps`). Package installs use bun;
-the connector and the pi runtime still execute on node.
 
 ### Milestones
 
-- M4.1 bridge (done): bot list + WS relay; unit tests with a fake upstream and
-  one live prompt through the bridge to a real bot.
-- M4.2 app (done): bot picker, session open, prompt, streamed transcript;
-  verified in Chromium against a real bot.
-- M4.3 verbs (done): stop, compact, new in the session bar, plus the busy
-  state in the sidebar and the prompt. Same smoke covers abort during a
-  running tool call and compaction.
-- M4.4 rendering (done): markdown answers, compact tool steps with nested
-  results, a spinner for a running tool, a thinking line, steer-while-busy
-  with a queued bubble, abort restoring the queued text, blobatar icons, and
-  append-only transcript updates so nothing flickers or closes.
+- M4.1 bridge (done, `b02298c`): bot list + WS relay; unit tests with a fake
+  upstream and one live prompt through the bridge to a real bot.
+- M4.2 app (done, `ae3fd35`): bot picker, session open, prompt, streamed
+  transcript; verified in Chromium against a real bot.
+- M4.3 verbs (done, `dc21fb0`): stop, compact, new in the session bar, plus
+  the busy state in the sidebar and the composer.
+- M4.4 rendering (done): markdown answers, tool rows with nested results, a
+  spinner for a running tool, steer-while-busy with a queued bubble, abort
+  restoring the queued text, blobatar icons, append-only transcript updates.
+- M4.5 HIG redesign (in progress): the design plan is
+  `packages/web/design/plan.html`. Tokens, dark mode, the type ramp and the
+  motion vocabulary are in; the module split behind `transcript.ts`,
+  `tools.ts`, `stream.ts`, `scroll.ts`, `composer.ts`, `panel.ts` is the
+  current work.
 
 ### Out of scope (M5)
 
@@ -393,9 +390,6 @@ Auth, remote access (Radius relay), reconnect/replay, systemd units.
 
 ### Open questions
 
-- Browser smoke test: a Chromium smoke script exists outside the repo
-  (nixpkgs chromium + playwright-core, `CHROMIUM_PATH`); promote it here if
-  M4.3 changes need regression.
-- Typed Chord service bindings in the browser vs a JSON convenience API on
-  the bridge. Settled: bindings, bundled from the fork source.
+- Browser smoke test: Chromium + playwright-core scripts exist outside the
+  repo (`CHROMIUM_PATH`); promote them here when rendering needs regression.
 - `bots.yaml` descriptions are still unread; the UI may want them here.

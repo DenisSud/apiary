@@ -6,12 +6,18 @@
   "description": "Bot registry and session policy shared by the TUI and web clients",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "bin": {
+    "pi-bot": "./bin/pi-bot",
+    "pi-bots-web": "./bin/pi-bots-web"
+  },
   "scripts": {
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@earendil-works/pi-client": "0.87.1",
     "@earendil-works/pi-server": "0.87.1",
+    "@pi-bots/auth": "workspace:*",
+    "@pi-bots/pi-manager": "workspace:*",
     "ws": "8.22.0"
   },
   "devDependencies": {

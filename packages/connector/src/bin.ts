@@ -1,8 +1,11 @@
-import { spawnSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { archiveBot, createBot, deleteBot, readBot, unarchiveBot } from "@pi-bots/pi-manager";
 import { resolveAttach, runClient, stopServer } from "./launcher.ts";
-import { listBots } from "./registry.ts";
+import { lockPath, logPath, serverDir } from "./paths.ts";
+import { clearRoute, listBots } from "./registry.ts";
+import { clearSession } from "./sessions.ts";
 
 const BIN_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin");
 // The fork's /bot and /new call back into this CLI; tell it where we are.
@@ -14,8 +17,12 @@ const USAGE = `usage:
   pi-bot compact <bot> [--new]            compact the bot's session
   pi-bot stop <bot>                       stop the bot's server
   pi-bot resolve <bot> [--new]            ensure the server and resolve the session
-  pi-bot list [--json]                    list bots (JSON for the TUI picker)
-  pi-bot new <name>                       scaffold a new bot
+  pi-bot list [--json] [--all]            list bots (JSON for the TUI picker)
+  pi-bot show <bot>                       print a bot's config as JSON
+  pi-bot new <name>                       scaffold a new bot (name only)
+  pi-bot archive <bot>                    stop the server and archive the bot
+  pi-bot unarchive <bot>                  make an archived bot usable again
+  pi-bot rm <bot> --yes                   delete a bot and its dir
   pi-bot <bot> [--new]                    same as attach
 `;
 
@@ -57,11 +64,54 @@ async function commandResolve(args: string[]): Promise<number> {
   return 0;
 }
 
-function commandNew(args: string[]): number {
-  const script = join(BIN_DIR, "pi-bot-new");
-  const result = spawnSync(script, args, { stdio: "inherit" });
-  if (result.error) throw result.error;
-  return result.status ?? 1;
+async function commandNew(args: string[]): Promise<number> {
+  const [name, ...rest] = args;
+  if (name === undefined) throw new Error("usage: pi-bot new <name>");
+  if (rest.length > 0) throw new Error(`unexpected argument '${rest[0]}': create takes a name only`);
+  const bot = await createBot({ name });
+  console.log(`created ${bot.dir}`);
+  return 0;
+}
+
+function commandShow(args: string[]): number {
+  const name = args[0];
+  if (name === undefined) throw new Error("missing bot name");
+  console.log(JSON.stringify(readBot(name), null, 2));
+  return 0;
+}
+
+async function commandArchive(args: string[]): Promise<number> {
+  const name = args[0];
+  if (name === undefined) throw new Error("missing bot name");
+  readBot(name);
+  const result = await stopServer(name);
+  archiveBot(name);
+  console.log(result.stopped ? `archived ${name} (stopped pid ${result.pid})` : `archived ${name}`);
+  return 0;
+}
+
+function commandUnarchive(args: string[]): number {
+  const name = args[0];
+  if (name === undefined) throw new Error("missing bot name");
+  unarchiveBot(name);
+  console.log(`unarchived ${name}`);
+  return 0;
+}
+
+async function commandRemove(args: string[]): Promise<number> {
+  const name = args[0];
+  if (name === undefined) throw new Error("missing bot name");
+  if (!args.includes("--yes")) throw new Error(`refusing to delete '${name}': pass --yes to confirm`);
+  readBot(name);
+  await stopServer(name);
+  deleteBot(name, { confirm: name });
+  clearRoute(name);
+  clearSession(name);
+  rmSync(lockPath(name), { force: true });
+  rmSync(logPath(name), { force: true });
+  rmSync(serverDir(name), { recursive: true, force: true });
+  console.log(`deleted ${name}`);
+  return 0;
 }
 
 async function commandCompact(args: string[]): Promise<number> {
@@ -97,13 +147,21 @@ async function main(args: string[]): Promise<number> {
   }
   switch (first) {
     case "list": {
-      const bots = listBots();
+      const bots = listBots({ includeArchived: args.includes("--all") });
       if (args.includes("--json")) console.log(JSON.stringify(bots));
-      else for (const bot of bots) console.log(bot.name);
+      else for (const bot of bots) console.log(bot.archived ? `${bot.name}\tarchived` : bot.name);
       return 0;
     }
     case "new":
       return commandNew(args.slice(1));
+    case "show":
+      return commandShow(args.slice(1));
+    case "archive":
+      return commandArchive(args.slice(1));
+    case "unarchive":
+      return commandUnarchive(args.slice(1));
+    case "rm":
+      return commandRemove(args.slice(1));
     case "attach":
       return commandAttach(args.slice(1));
     case "message":

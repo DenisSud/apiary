@@ -1,9 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { clearApplyMarker, ensureInvariants, isApplyPending, isArchivedDir, adminSettingsPath } from "@pi-bots/pi-manager";
+import { registryDir } from "@pi-bots/pi-manager";
 import { Client } from "@earendil-works/pi-client";
 import { createUnixTransportFactory } from "@earendil-works/pi-client/unix";
 import { getUnixSocketPath } from "@earendil-works/pi-server/unix";
@@ -27,6 +28,24 @@ export interface ServerHandle {
   started: boolean;
 }
 
+/** What a spawn adapter needs to start a bot's server. */
+export interface ServerSpawnInput {
+  name: string;
+  dir: string;
+  serverId: string;
+  logPath: string;
+}
+
+/**
+ * The process boundary for starting a bot server. The default spawns a child
+ * process; the service always runs inside the per-user container, so this is
+ * a local child. The seam is kept for a future spawner that runs a server
+ * somewhere else (per-bot container, remote worker).
+ */
+export interface ServerSpawner {
+  spawn(input: ServerSpawnInput): number;
+}
+
 export interface AttachTarget extends ServerHandle {
   bot: string;
   dir: string;
@@ -39,14 +58,7 @@ export function requireBot(name: string): { name: string; dir: string } {
   if (!existsSync(join(dir, "settings.json"))) {
     throw new Error(`unknown bot '${name}' (no ${dir}/settings.json)`);
   }
-  if (!existsSync(join(dir, "memory"))) {
-    const remote = remoteUrl();
-    throw new Error(
-      `bot '${name}' has no memory clone at ${dir}/memory\n` +
-        `        (not falling back to ~/.pi/agent/memory — that is shared)` +
-        (remote === undefined ? "" : `\n        restore it: git clone ${remote} ${dir}/memory`),
-    );
-  }
+  if (isArchivedDir(dir)) throw new Error(`bot '${name}' is archived — unarchive first`);
   return { name, dir };
 }
 
@@ -66,7 +78,7 @@ export async function probeServer(socketPath: string, serverId: string): Promise
 }
 
 /** Ensure the bot's server is running and reachable, spawning it if needed. */
-export async function ensureServer(name: string): Promise<ServerHandle> {
+export async function ensureServer(name: string, options: { spawner?: ServerSpawner } = {}): Promise<ServerHandle> {
   const { dir } = requireBot(name);
   const running = readRoute(name);
   if (running && (await probeServer(running.socketPath, running.serverId))) {
@@ -84,13 +96,28 @@ export async function ensureServer(name: string): Promise<ServerHandle> {
     // Route before spawn: a concurrent launcher sees a pending route and waits
     // for the socket instead of spawning a second server under a new id.
     writeRoute(name, { serverId, socketPath, startedAt: new Date().toISOString() });
-    const pid = spawnServer({ name, dir, serverId });
+    const spawner = options.spawner ?? localServerSpawn;
+    const pid = spawner.spawn({ name, dir, serverId, logPath: logPathFor(name) });
     await waitReady({ name, socketPath, serverId, pid });
     writeRoute(name, { serverId, socketPath, pid, startedAt: new Date().toISOString() });
     return { serverId, socketPath, pid, started: true };
   } finally {
     lock.release();
   }
+}
+
+/**
+ * Stop and reconcile when the post-commit hook left an apply marker. Runs
+ * before any attach, so a CLI attach and the bridge's idle watcher both apply
+ * a pending config commit exactly once (the marker is removed at the end).
+ */
+export async function applyPendingReload(name: string): Promise<boolean> {
+  const dir = join(botsHome(), name);
+  if (!isApplyPending(dir)) return false;
+  await stopServer(name);
+  await ensureInvariants(name);
+  clearApplyMarker(dir);
+  return true;
 }
 
 /** Ensure the server, then pick the session: explicit id, else the bot's default. */
@@ -102,6 +129,7 @@ export async function resolveAttach(
   if (options.sessionId !== undefined && !isValidSessionId(options.sessionId)) {
     throw new Error(`invalid session id: ${JSON.stringify(options.sessionId)}`);
   }
+  await applyPendingReload(name);
   const server = await ensureServer(name);
   const pointer = options.new ? undefined : readSession(name);
   const sessionId = options.sessionId ?? pointer?.sessionId ?? newSessionId();
@@ -170,7 +198,7 @@ function isOurServer(pid: number, name: string): boolean {
   }
 }
 
-function spawnServer({ name, dir, serverId }: { name: string; dir: string; serverId: string }): number {
+function spawnServer(input: ServerSpawnInput): number {
   const checkout = sourceDir();  // Same argv pi-test.sh builds: node --import <source-resolver> cli.ts server.
   // Calling node directly keeps the pid ours; pi-test.sh would leave a shell.
   const argv = [
@@ -179,23 +207,26 @@ function spawnServer({ name, dir, serverId }: { name: string; dir: string; serve
     join(checkout, "packages/coding-agent/src/experimental/cli.ts"),
     "server",
     "--server-id",
-    serverId,
+    input.serverId,
   ];
-  const log = openSync(logPathFor(name), "a");
+  const log = openSync(input.logPath, "a");
   try {
     const child = spawn(process.execPath, argv, {
-      cwd: dir,
+      cwd: input.dir,
       detached: true,
       stdio: ["ignore", log, log],
-      env: botEnv(name, dir),
+      env: botEnv(input.name, input.dir),
     });
     child.unref();
-    if (child.pid === undefined) throw new Error(`failed to spawn the server for '${name}'`);
+    if (child.pid === undefined) throw new Error(`failed to spawn the server for '${input.name}'`);
     return child.pid;
   } finally {
     closeSync(log);
   }
 }
+
+/** The default spawner: a detached local child process. */
+export const localServerSpawn: ServerSpawner = { spawn: spawnServer };
 
 function logPathFor(name: string): string {
   const path = logPath(name);
@@ -208,9 +239,12 @@ function botEnv(name: string, dir: string): NodeJS.ProcessEnv {
     ...process.env,
     PI_EXPERIMENTAL: "1",
     PI_CODING_AGENT_DIR: dir,
-    PI_MEMORY_DIR: join(dir, "memory"),
     PI_SERVER_DIR: serverDir(name),
     PI_BOT_NAME: name,
+    // The forked server merges this file over global + project settings.
+    PI_ADMIN_SETTINGS: adminSettingsPath(dir),
+    // Stable location of the package registry for this deployment.
+    PI_REGISTRY_DIR: registryDir(),
   };
 }
 
@@ -257,12 +291,4 @@ function logTail(name: string): string {
   } catch {
     return "(no log)";
   }
-}
-
-function remoteUrl(): string | undefined {
-  const result = spawnSync("git", ["-C", join(homedir(), ".pi", "agent", "memory"), "remote", "get-url", "origin"], {
-    encoding: "utf8",
-  });
-  const url = result.status === 0 ? result.stdout.trim() : "";
-  return url.length > 0 ? url : undefined;
 }

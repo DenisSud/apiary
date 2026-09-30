@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readJsonFile, writeJsonAtomic } from "./files.ts";
+import { readJsonFile, removeFile, writeJsonAtomic } from "./files.ts";
 import { sessionPath } from "./paths.ts";
 
 export interface SessionRef {
@@ -30,6 +30,10 @@ export function readSession(name: string): SessionRef | undefined {
     sessionId: raw.sessionId,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
   };
+}
+
+export function clearSession(name: string): void {
+  removeFile(sessionPath(name));
 }
 
 // Last attached session becomes the bot's default. Sharded per bot, so this

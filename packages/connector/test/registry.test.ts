@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { clearRoute, listBots, readRoute, writeRoute } from "../src/index.ts";
+import { requireBot } from "../src/launcher.ts";
 import { routesDir } from "../src/paths.ts";
 
 function setup(): string {
@@ -37,11 +38,39 @@ test("listBots finds dirs with settings.json, sorted, skips the rest", () => {
 
   writeRoute("alpha", { serverId: "s1", socketPath: "/tmp/a.sock" });
   assert.equal(listBots()[0]!.hasRoute, true);
+  assert.equal(listBots()[0]!.archived, false);
+});
+
+test("listBots hides archived bots unless asked", () => {
+  setup();
+  makeBot("alpha");
+  makeBot("beta");
+  writeFileSync(join(process.env.PI_BOTS_HOME!, "alpha", ".archived"), "{}\n");
+
+  assert.deepEqual(
+    listBots().map((bot) => bot.name),
+    ["beta"],
+  );
+  const all = listBots({ includeArchived: true });
+  assert.deepEqual(
+    all.map((bot) => bot.name),
+    ["alpha", "beta"],
+  );
+  assert.equal(all[0]!.archived, true);
 });
 
 test("listBots returns empty for a missing bots home", () => {
   setup();
   assert.deepEqual(listBots(), []);
+});
+
+test("requireBot refuses archived bots", () => {
+  setup();
+  makeBot("alpha");
+  assert.equal(requireBot("alpha").name, "alpha");
+  writeFileSync(join(process.env.PI_BOTS_HOME!, "alpha", ".archived"), "{}\n");
+  assert.throws(() => requireBot("alpha"), /archived/);
+  assert.throws(() => requireBot("missing"), /unknown bot/);
 });
 
 test("route round trip, clear, missing and malformed reads", () => {

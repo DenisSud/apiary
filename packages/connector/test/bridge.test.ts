@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { AuthService, type AuthRuntime } from "@pi-bots/auth";
 import { startBridge, type BridgeLauncher } from "../src/bridge.ts";
 import { writeRoute } from "../src/registry.ts";
 import { recordAttached } from "../src/sessions.ts";
@@ -124,6 +125,7 @@ test("GET /api/bots summarizes bots, routes, and the last session", async () => 
     assert.equal(bot.name, "alpha");
     assert.equal(bot.dir, join(process.env.PI_BOTS_HOME!, "alpha"));
     assert.equal(bot.running, true);
+    assert.equal(bot.setup, false);
     assert.equal(bot.serverId, SERVER_ID);
     assert.equal(bot.pid, 42);
     assert.deepEqual(bot.lastSession, {
@@ -131,6 +133,175 @@ test("GET /api/bots summarizes bots, routes, and the last session", async () => 
       updatedAt: (bot.lastSession as { updatedAt: string }).updatedAt,
     });
     assert.match((bot.lastSession as { updatedAt: string }).updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test("the management API creates, reads, updates, archives and deletes bots", async () => {
+  setupState();
+  const shared = mkdtempSync(join(tmpdir(), "bridge-shared-"));
+  process.env.PI_SHARED_AGENT_DIR = shared;
+  for (const file of ["auth.json", "models.json", "models-store.json", "trust.json"]) {
+    writeFileSync(join(shared, file), "{}\n");
+  }
+
+  const bridge = await startBridge({ port: 0, launcher: fakeLauncher("/tmp/none.sock", []) });
+  const api = `http://127.0.0.1:${bridge.port}/api/bots`;
+  const json = (value: unknown): RequestInit => ({
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(value),
+  });
+  try {
+    const created = await fetch(api, json({ name: "newbot" }));
+    assert.equal(created.status, 201);
+    const createdBody = (await created.json()) as { bot: Record<string, unknown> };
+    assert.equal(createdBody.bot.name, "newbot");
+    assert.equal(createdBody.bot.archived, false);
+    assert.equal(createdBody.bot.setup, true);
+    assert.deepEqual(createdBody.bot.model, { provider: "opencode-go", id: "deepseek-v4.1-flash" });
+
+    assert.equal((await fetch(api, json({ name: "newbot" }))).status, 409);
+    assert.equal((await fetch(api, json({ name: "Bad Name" }))).status, 400);
+    assert.equal((await fetch(`${api}/nope`)).status, 404);
+
+    const detail = await fetch(`${api}/newbot`);
+    assert.equal(detail.status, 200);
+    assert.equal(((await detail.json()) as { bot: { setup: boolean } }).bot.setup, true);
+
+    const patched = await fetch(`${api}/newbot`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ thinking: "high" }),
+    });
+    assert.equal(patched.status, 200);
+    const patchedBody = (await patched.json()) as { bot: { thinking: string } };
+    assert.equal(patchedBody.bot.thinking, "high");
+
+    const reloaded = await fetch(`${api}/newbot/reload`, { method: "POST" });
+    assert.equal(reloaded.status, 200);
+    assert.equal(((await reloaded.json()) as { bot: { name: string } }).bot.name, "newbot");
+
+    const archived = await fetch(`${api}/newbot/archive`, { method: "POST" });
+    assert.equal(archived.status, 200);
+    assert.equal(((await archived.json()) as { bot: { archived: boolean } }).bot.archived, true);
+    const list = (await (await fetch(api)).json()) as { bots: Array<{ name: string; archived: boolean }> };
+    assert.equal(list.bots.find((bot) => bot.name === "newbot")?.archived, true);
+    assert.equal((await fetch(`${api}/newbot/unarchive`, { method: "POST" })).status, 200);
+
+    const refused = await fetch(`${api}/newbot`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirm: "wrong" }),
+    });
+    assert.equal(refused.status, 400);
+    const deleted = await fetch(`${api}/newbot`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirm: "newbot" }),
+    });
+    assert.equal(deleted.status, 204);
+    assert.ok(!existsSync(join(process.env.PI_BOTS_HOME!, "newbot")));
+  } finally {
+    await bridge.close();
+  }
+});
+
+function fakeAuthService(): AuthService {
+  const provider = { id: "acme", name: "Acme", auth: { apiKey: {} } };
+  const runtime: AuthRuntime = {
+    getProviders: () => [provider],
+    getProvider: (id) => (id === "acme" ? provider : undefined),
+    getProviderAuthStatus: () => ({ configured: false }),
+    isUsingOAuth: () => false,
+    login: async (_id, _type, interaction) => {
+      const key = await interaction.prompt({ type: "secret", message: "API key?" });
+      return { type: "api_key", key };
+    },
+    refresh: async () => ({}),
+    logout: async () => {},
+  };
+  return new AuthService(runtime);
+}
+
+test("the auth API prepares a login and drives it over the WebSocket", async () => {
+  setupState();
+  const service = fakeAuthService();
+  const bridge = await startBridge({
+    port: 0,
+    launcher: fakeLauncher("/tmp/none.sock", []),
+    auth: async () => service,
+  });
+  const base = `http://127.0.0.1:${bridge.port}`;
+  try {
+    const providers = (await (await fetch(`${base}/api/auth/providers`)).json()) as {
+      providers: Array<{ id: string; apiKey: boolean; oauth: boolean }>;
+    };
+    assert.deepEqual(providers.providers, [{ id: "acme", name: "Acme", apiKey: true, oauth: false, configured: false }]);
+
+    const invalid = await fetch(`${base}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "acme", type: "nope" }),
+    });
+    assert.equal(invalid.status, 400);
+    const unknown = await fetch(`${base}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "missing", type: "api_key" }),
+    });
+    assert.equal(unknown.status, 400);
+
+    const login = await fetch(`${base}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "acme", type: "api_key" }),
+    });
+    assert.equal(login.status, 201);
+    const { loginId } = (await login.json()) as { loginId: string };
+
+    const frames: Array<Record<string, unknown>> = [];
+    let resolveDone!: () => void;
+    let resolveClosed!: () => void;
+    const done = new Promise<void>((resolve) => {
+      resolveDone = resolve;
+    });
+    const closed = new Promise<void>((resolve) => {
+      resolveClosed = resolve;
+    });
+    let socketFailure!: (error: Error) => void;
+    const failed = new Promise<never>((_resolve, reject) => {
+      socketFailure = reject;
+    });
+    const ws = new WebSocket(`ws://127.0.0.1:${bridge.port}/api/auth/login/${loginId}`);
+    ws.onclose = () => resolveClosed();
+    ws.onerror = () => socketFailure(new Error("auth websocket failed"));
+    ws.onopen = () => {
+      ws.onmessage = (event) => {
+        const frame = JSON.parse(String(event.data)) as Record<string, unknown>;
+        frames.push(frame);
+        if (frame.type === "prompt") {
+          const prompt = frame.prompt as { id: string; type: string };
+          assert.equal(prompt.type, "secret");
+          ws.send(JSON.stringify({ type: "input", id: prompt.id, value: "sk-test" }));
+        }
+        if (frame.type === "done") resolveDone();
+      };
+    };
+    await Promise.race([done, failed]);
+    await Promise.race([closed, failed]);
+    assert.deepEqual(
+      frames.map((frame) => frame.type),
+      ["prompt", "done"],
+    );
+
+    const logout = await fetch(`${base}/api/auth/logout`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "acme" }),
+    });
+    assert.equal(logout.status, 204);
   } finally {
     await bridge.close();
   }
