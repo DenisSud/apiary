@@ -33,7 +33,6 @@ in
     pkgs.bun
     pkgs.git # commit/push from the shell
     pkgs.jq # bridge smoke tests, doctor
-    pkgs.fish # `lint` syntax-checks packages/connector/fish/pi.fish
     pkgs.curl # bridge smoke tests, doctor's SearXNG probe
     pkgs.shellcheck # `lint`
     pkgs.watchexec # `web-watch`
@@ -142,13 +141,12 @@ in
     };
 
     lint = {
-      description = "shellcheck the shell entrypoints, syntax-check the fish function";
+      description = "shellcheck the shell entrypoints";
       exec = ''
         cd "$DEVENV_ROOT"
         shellcheck -S warning \
           packages/connector/bin/pi-bot packages/connector/bin/pi-bots-web \
           base/extensions/*/test/run.sh registry/*/test/run.sh
-        fish -n packages/connector/fish/pi.fish
         echo "lint clean"
       '';
     };

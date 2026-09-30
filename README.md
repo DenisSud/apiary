@@ -15,7 +15,7 @@ all load.
 ├── package.json          # bun workspace root (service monorepo)
 ├── base/                 # the base pi package every agent loads (extensions, skills)
 ├── registry/             # agent-usable packages: ptc, web-search, systemone, grilling, …
-├── packages/connector/   # agent registry, launcher, bridge, the CLI wrappers (bin/, fish/)
+├── packages/connector/   # agent registry, launcher, bridge, the CLI wrappers (bin/)
 ├── packages/pi-manager/  # agent lifecycle: scaffold, read, update, archive, delete
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
 ├── packages/systemone/  # System One decision client + shared config (local Kev)
@@ -83,7 +83,7 @@ default. See `registry/systemone/SPEC.md`.
 ## Agents
 
 ```bash
-pi-bot <name>        # run an agent (also: pi --bot <name>)
+pi-bot <name>        # run an agent
 pi-bot list          # which agents exist
 pi-bot new <name>    # scaffold one under $PI_BOTS_HOME
 ```
@@ -162,7 +162,7 @@ Tasks are devenv scripts, all listed by `devenv info`:
 | `web` | serve the app + bridge on 127.0.0.1:8787 |
 | `web-watch` | rebuild the bundle while packages/web/src changes |
 | `bot <name>` | this checkout's pi-bot (local connector source) |
-| `lint` | shellcheck the entrypoints, `fish -n` the fish function |
+| `lint` | shellcheck the shell entrypoints |
 | `doctor` | pi, the pi source checkout, agents root, SearXNG |
 
 `devenv up` builds the web app and serves it; `devenv test` runs `check`.

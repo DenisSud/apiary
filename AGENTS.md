@@ -76,7 +76,6 @@ agent dirs and the local rules overlay — not in the base.
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
 | `packages/systemone/` | System One decision client + shared config (local Kev) |
 | `packages/web/` | browser client served by the bridge (vanilla TS, esbuild) |
-| `packages/connector/fish/` | the `pi --bot <name>` fish function |
 | `deploy/` | service container image: Dockerfile, build and run scripts (issue #18) |
 | `docs/` | project vision, architecture, memory, container, self-config |
 | `.pi/skills/` | project skills (pi loads them from the repo root) |
