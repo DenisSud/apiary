@@ -25,7 +25,10 @@ wasted work, and the model picker is clamped. Never run `pi update` or
 
 ## First setup
 
-Kickoff is the message "Set me up." — the trigger to run this branch.
+Kickoff is the service's first-setup message — "Set me up", sent through
+this skill. Begin with the first question immediately: don't summarize your
+environment or explain the process; a fresh agent dir has nothing worth
+reporting.
 
 1. **Interview**, one question at a time, at most five questions, each with
    your recommended answer. Look facts up (files, environment) instead of
