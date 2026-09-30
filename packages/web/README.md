@@ -30,10 +30,12 @@ to the built copies this repo depends on. It also copies `index.html`,
 | `main.ts` | composition root: DOM handles, app state (open session, bot list, busy flag), event wiring, the session actions, the onboarding/empty-state swap, the setup watcher |
 | `types.ts` | the snapshot vocabulary (`BotSummary`, `BotDetail`, `Entry`, `Operation`, `TranscriptSnapshot`, `QueuedItem`) and pure readers over it (`textOf`, `blockText`, `messageBlocks`, `queuedMessages`) |
 | `session.ts` | one session over the bridge: WebSocket → `ByteTransport` → `Client`, activation, create-if-unknown + attach, snapshot subscription, `prompt`/`steer`/`abort`/`compact`, and the management calls (`listBots`, `createBot`, `reloadBot`) |
-| `onboarding.ts` | the first-run / new-bot view: provider login (both methods), name + task, create |
+| `onboarding.ts` | the first-run / new-bot view: provider login (both methods), name, create |
 | `onboarding-core.ts` | the onboarding's pure core: name rule, kickoff message, provider order/methods/status |
 | `auth.ts` | the provider-login client: `GET /api/auth/providers`, start a login, the frame protocol over one WebSocket |
-| `transcript.ts` | the transcript view: grouping into turns, the live working block, tool rows, notes, append-only rendering |
+| `turns.ts` | the transcript's pure structure: entries → turns → pieces → bubbles, and the block signatures |
+| `skill-block.ts` | reads the `<skill …>` block the service writes into a user message, for the chip rendering |
+| `transcript.ts` | the transcript view: settled blocks, the live bubbles, tool rows, notes, append-only rendering |
 | `tools.ts` | tool rows: icon + one-line call, state glyph, duration, result block, call/result pairing |
 | `stream.ts` | the streaming answer: settled prefix as markdown, the tail revealed in chunks |
 | `scroll.ts` | following the end: the `pinned` state, content observers, the jump action |
@@ -44,8 +46,9 @@ to the built copies this repo depends on. It also copies `index.html`,
 | `blob.ts` | the blobatar as inline SVG, optionally following the pointer |
 | `index.html` | the static shell (all element ids `main.ts` looks up) |
 | `style.css` | tokens, both themes, the components, motion |
-| `test/core.test.ts` | the pure core: grouping, readers, formatters, the pin decision |
+| `test/core.test.ts` | the pure core: grouping, pieces, bubbles, readers, formatters, the pin decision |
 | `test/onboarding.test.ts` | the onboarding core: name rule, kickoff, provider ordering and lines |
+| `test/skill-block.test.ts` | the skill block reader |
 
 ## Data flow
 
@@ -70,10 +73,11 @@ turn runs, `requestAbort(operation.id)` for stop, `compact` while idle.
 ## Onboarding
 
 First run (no bots in `PI_BOTS_HOME`) swaps the main area for the onboarding
-view: provider login over the bridge auth proxy, then name + task, then
-create. It opens again from the sidebar `+` and the no-session empty state.
-On create, `main.ts` opens a fresh session and sends the kickoff
-(`onboarding-core.ts` composes `/skill:self-config Set me up.` plus the task).
+view: provider login over the bridge auth proxy, then a name, then create. It
+opens again from the sidebar `+` and the no-session empty state. On create,
+`main.ts` opens a fresh session and sends the first-setup prompt through the
+self-config skill (`kickoffPrompt` in `onboarding-core.ts`); the transcript
+renders it as a skill chip.
 
 While the active bot is in setup (or has an apply pending) `main.ts` polls
 `GET /api/bots` every 3 s and shows a chip on the session bar. The bridge's
@@ -91,17 +95,20 @@ because the transcript is replaced there. Two consequences worth keeping:
 
 - An open `<details>` survives every later snapshot; new nodes get the
   `enter` class once, so the fade-in does not replay.
-- The live slot is patched in place while its shape is unchanged (the
-  streaming text and thinking are updated node-by-node); a shape change swaps
-  the block with a short fade, and an answer that is already on screen is
-  kept across the swap so it never blinks.
+- The live slot is reconciled bubble by bubble: bubbles only append within a
+  turn, text streams in place, and the thinking `<pre>` is updated
+  node-by-node. No full swaps, so nothing blinks.
 
 Other rules:
 
-- A turn is everything between two user messages. A settled turn collapses
-  its work into one `worked for X s` trace `<details>`; the answer is the
-  text outside tool calls, rendered as markdown. Text next to tool calls is an
-  explainer and lives in the trace.
+- A turn is everything between two user messages; its pieces group into
+  bubbles — the work of a phase and the message it produced (`turns.ts`).
+  Live, a bubble shows its trace ("Working", thinking, tool rows) and
+  collapses it the moment the text streams in; work after a message opens a
+  new bubble. Settled, only the message bubbles remain — traces are not kept
+  in the transcript (the session tree will show them later).
+- A skill invocation (`<skill …>` in the user message) renders as a chip with
+  the name, the description from its frontmatter on hover.
 - A tool call and its result are one row, paired by `toolCallId` whatever
   order they arrive in (`tools.ts` caches results until the call shows up).
   A running tool that has no transcript message yet comes from

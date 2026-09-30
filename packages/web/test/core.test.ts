@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { pinnedAfterScroll } from "../src/scroll.ts";
 import { stepDuration, summarizeArgs, singleLine } from "../src/tools.ts";
-import { formatDuration, groupEntries } from "../src/transcript.ts";
+import { groupBubbles, groupEntries, turnPieces } from "../src/turns.ts";
 import { type Entry, type MessageLike, type TranscriptSnapshot, blockText, queuedMessages, textOf } from "../src/types.ts";
 
 // The pure core: transcript grouping, the readers over a snapshot, the small
@@ -52,10 +52,61 @@ test("groupEntries keeps a note between turns from opening a turn of its own", (
 	);
 });
 
-test("formatDuration speaks in seconds under a minute, minutes above", () => {
-	assert.equal(formatDuration(12_400), "12 s");
-	assert.equal(formatDuration(65_000), "1 min 5 s");
-	assert.equal(formatDuration(0), "1 s");
+test("turnPieces flattens a turn into thinking, tool and text pieces in order", () => {
+	const turn = {
+		entries: [
+			message("a1", "assistant", 200, [
+				{ type: "thinking", thinking: "hmm" },
+				{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls" } },
+			]),
+			message("r1", "toolResult", 300, [{ type: "text", text: "ok" }]),
+			message("a2", "assistant", 400, [{ type: "text", text: "done" }]),
+		],
+	};
+	// the result pairs with its call by toolCallId, like the real transcript
+	turn.entries[1].message.toolCallId = "t1";
+	const pieces = turnPieces(turn, undefined, []);
+	assert.deepEqual(
+		pieces.map((piece) => piece.kind),
+		["thinking", "toolCall", "toolResult", "text"],
+	);
+	const result = pieces[2];
+	assert.equal(result.kind === "toolResult" ? result.duration : undefined, "0.1s");
+});
+
+test("groupBubbles pairs a trace with the message it produced and splits on a message", () => {
+	const turn = {
+		entries: [
+			message("a1", "assistant", 100, [
+				{ type: "text", text: "Let me check." },
+				{ type: "toolCall", id: "t1", name: "bash", arguments: {} },
+			]),
+			message("r1", "toolResult", 150, [{ type: "text", text: "ok" }]),
+			message("a2", "assistant", 200, [{ type: "text", text: "Done." }]),
+		],
+	};
+	const bubbles = groupBubbles(turnPieces(turn, undefined, []));
+	assert.deepEqual(
+		bubbles.map((bubble) => ({ trace: bubble.trace.map((piece) => piece.kind), text: bubble.text })),
+		[
+			{ trace: [], text: "Let me check." },
+			{ trace: ["toolCall", "toolResult"], text: "Done." },
+		],
+	);
+});
+
+test("groupBubbles keeps a trailing trace out of the message's bubble", () => {
+	const pieces = turnPieces(undefined, { role: "assistant", content: [{ type: "text", text: "hi" }] }, [
+		{ status: "running", toolCallId: "t9", toolName: "bash", args: {} },
+	]);
+	const bubbles = groupBubbles(pieces);
+	assert.deepEqual(
+		bubbles.map((bubble) => ({ trace: bubble.trace.length, text: bubble.text })),
+		[
+			{ trace: 0, text: "hi" },
+			{ trace: 1, text: "" },
+		],
+	);
 });
 
 test("stepDuration floors at a tenth and drops the decimal past ten seconds", () => {

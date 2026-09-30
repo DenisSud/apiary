@@ -48,11 +48,11 @@ These were decisions, not accidents. Change them only when the maintainer asks.
 - **The composer floats over the transcript.** Its footprint is published as
   `--composer-space` and the transcript's bottom padding uses it. Never
   hardcode that padding.
-- **One assistant box per turn.** Live: a grey block whose summary is
-  "Working"/"Waiting" with a spinner, collapsible while it runs. Settled: the
-  same block collapsed to "worked for X s". Text in a message that also
-  carries tool calls is an explainer row inside the trace; text alone is the
-  answer below it.
+- **Working traces are temporary.** Live: each phase of a turn is one grey
+  bubble — a trace bubble ("Working"/"Waiting" with a spinner) that collapses
+  the moment the model writes text, leaving only the message in that bubble;
+  work after a message opens a new bubble. Settled: only the message bubbles
+  remain — the full traces live in the session tree (later).
 - **Tool rows are quiet.** Glyph, name, a one-line argument, the duration on
   hover, a state glyph: a check when done, a spinner while running, red only
   on error.

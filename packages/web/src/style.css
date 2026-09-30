@@ -519,6 +519,41 @@ body.panel-hidden #sidebar {
 	animation: breathe 2s var(--ease) infinite;
 }
 
+/* a skill invocation: the name in a chip, the description on hover */
+.skill-chip {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 8px;
+	border: 1px solid var(--border);
+	border-radius: var(--r-chip);
+	background: var(--elevated);
+	color: var(--muted);
+	font: 12px/1.7 var(--mono);
+}
+.skill-tip {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	z-index: 4;
+	display: none;
+	width: max-content;
+	max-width: min(320px, calc(100vw - 96px));
+	padding: 6px 9px;
+	border: 1px solid var(--border);
+	border-radius: var(--r-chip);
+	background: var(--elevated);
+	color: var(--text);
+	font: 400 13px/1.5 var(--sans);
+	white-space: normal;
+}
+.skill-chip:hover .skill-tip {
+	display: block;
+}
+.skill-args {
+	margin-top: 4px;
+}
+
 /* answers may run to the right edge of the user bubble, not the 78% pill */
 .message.assistant {
 	align-self: flex-start;
@@ -530,7 +565,12 @@ body.panel-hidden #sidebar {
 	max-width: 100%;
 }
 
-/* the work behind an answer: one row that opens into the trace */
+/* a settled turn keeps one bubble per message; the traces are gone */
+.message.assistant .bubble + .bubble {
+	margin-top: 10px;
+}
+
+/* the work behind a running answer: one row that opens into the trace */
 .trace {
 	margin: 0;
 }
@@ -539,7 +579,6 @@ body.panel-hidden #sidebar {
 }
 .trace > summary {
 	list-style: none;
-	cursor: pointer;
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -550,31 +589,8 @@ body.panel-hidden #sidebar {
 .trace > summary::-webkit-details-marker {
 	display: none;
 }
-.trace > summary::after {
-	content: "\203A";
-	font-size: 15px;
-	line-height: 1;
-	color: var(--faint);
-	transition: transform var(--dur-out) var(--ease);
-}
-.trace[open] > summary::after {
-	transform: rotate(90deg);
-}
 .trace-body {
 	padding: 2px 0;
-}
-
-/* while the turn runs the row carries a spinner instead of a chevron */
-.trace.live > summary::after {
-	display: none;
-}
-
-/* text the model wrote while working reads like the answer, not like thinking */
-.explainer {
-	color: var(--text);
-	font-size: 15px;
-	line-height: 1.55;
-	margin: 6px 0;
 }
 
 .message.assistant.error .text,
@@ -582,8 +598,12 @@ body.panel-hidden #sidebar {
 	color: var(--error);
 }
 
-/* the live slot: the answer being written, the work behind it */
+/* the live slot: the running turn's bubbles, the queue ahead of them */
 .live {
+	display: contents;
+}
+.live-queued,
+.live-bubbles {
 	display: contents;
 }
 
@@ -1480,10 +1500,6 @@ body.onboarding #onboarding {
 	font-size: 12.5px;
 	font-weight: 600;
 }
-.field-optional {
-	color: var(--faint);
-	font-weight: 400;
-}
 .field-hint {
 	color: var(--faint);
 	font-size: 12px;
@@ -1506,8 +1522,7 @@ body.onboarding #onboarding {
 	height: 44px;
 	border-radius: 14px;
 }
-.name-input,
-.task-input {
+.name-input {
 	width: 100%;
 	border: 1px solid var(--border);
 	border-radius: var(--r-chip);
@@ -1515,16 +1530,9 @@ body.onboarding #onboarding {
 	color: var(--text);
 	font: 400 13px/1.4 var(--sans);
 	padding: 8px 10px;
-}
-.name-input {
 	flex: 1;
 }
-.task-input {
-	resize: vertical;
-	min-height: 64px;
-}
-.name-input:disabled,
-.task-input:disabled {
+.name-input:disabled {
 	opacity: 0.6;
 }
 .form-error {

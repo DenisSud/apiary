@@ -1,24 +1,24 @@
 import { renderMarkdown } from "./markdown.ts";
+import { type SkillInvocation, parseSkillInvocation } from "./skill-block.ts";
 import { createStream, type Stream } from "./stream.ts";
-import { createToolRows, stepDuration } from "./tools.ts";
+import { createToolRows } from "./tools.ts";
 import {
-	type ContentBlock,
-	type Entry,
-	type MessageEntry,
-	type MessageLike,
-	type QueuedItem,
-	type RunningTool,
-	type TranscriptSnapshot,
-	blockText,
-	isToolCall,
-	messageBlocks,
-	queuedMessages,
-	textOf,
-} from "./types.ts";
+	type Block,
+	type Bubble,
+	type TracePiece,
+	type Turn,
+	blockSignature,
+	groupBubbles,
+	groupEntries,
+	turnPieces,
+} from "./turns.ts";
+import { type MessageLike, type QueuedItem, type TranscriptSnapshot, queuedMessages, textOf } from "./types.ts";
 
 // The transcript view: one lane snapshot in, DOM out. Grouping entries into
-// turns, the live working block, the streaming answer, tool rows, notes and
-// the incremental append-only rendering all live behind render()/reset().
+// turns, the live working bubbles, the streaming answer and the incremental
+// append-only rendering all live behind render()/reset(). Working traces are
+// temporary: a bubble shows the trace while the model works, collapses the
+// moment its message arrives, and the settled turn keeps only the messages.
 
 export interface TranscriptView {
 	render(snapshot: TranscriptSnapshot): void;
@@ -27,42 +27,52 @@ export interface TranscriptView {
 	ownsToggle(target: EventTarget | null): boolean;
 }
 
-/** A turn is everything the assistant did between two user messages. */
-export interface Turn {
-	entries: MessageEntry[];
-	startedAt?: number;
-	endedAt?: number;
-}
+const EASE = "cubic-bezier(0.2, 0, 0, 1)";
+const COLLAPSE_MS = 140;
 
-export type Block =
-	| { kind: "user"; entry: MessageEntry }
-	| { kind: "turn"; turn: Turn }
-	| { kind: "note"; entry: Entry };
+/** One live bubble of the running turn: its trace while working, its text after. */
+interface LiveBubble {
+	key: string;
+	element: HTMLElement;
+	bubble: HTMLElement;
+	label?: Text;
+	trace?: HTMLDetailsElement;
+	traceBody?: HTMLElement;
+	traceSig?: string;
+	text?: Stream;
+	textSource?: string;
+	thinking: Map<string, { details: HTMLDetailsElement; pre: HTMLPreElement }>;
+}
 
 export function createTranscript(root: HTMLElement): TranscriptView {
 	const rows = createToolRows();
 	const liveSlot = document.createElement("div");
 	liveSlot.className = "live";
+	const queuedHost = document.createElement("div");
+	queuedHost.className = "live-queued";
+	const bubbleHost = document.createElement("div");
+	bubbleHost.className = "live-bubbles";
+	liveSlot.append(queuedHost, bubbleHost);
 	// Details we open ourselves still queue a toggle event once inserted; those
 	// must not count as the reader folding something away.
 	const openedByUs = new WeakSet<Element>();
-	let swapTimer: number | undefined;
 	// The transcript is appended to, never rebuilt, so <details> stay open and
 	// new entries can animate in. Compaction and session switches replace the
 	// list and go through the reset path.
 	let renderedGroups: string[] = [];
 	let renderedNodes: (HTMLElement | undefined)[] = [];
-	let live: {
-		shape: string;
-		text?: Stream;
-		textSource?: string;
-		root?: HTMLElement;
-		queuedIds?: string;
-		turnIds?: string;
-		thinking?: { element: HTMLPreElement; source: string };
-	} = { shape: "" };
+	let queuedSig = "";
+	const liveBubbles: LiveBubble[] = [];
 
-	/** A turn is everything the assistant did between two user messages. */
+	const reducedMotion = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+	const refreshEmpty = (): void => {
+		root.classList.toggle(
+			"empty",
+			renderedGroups.length === 0 && queuedHost.childElementCount === 0 && bubbleHost.childElementCount === 0,
+		);
+	};
+
 	const render = (snapshot: TranscriptSnapshot): void => {
 		const running = snapshot.operation !== null && snapshot.operation !== undefined;
 		const blocks = groupEntries(snapshot.transcript);
@@ -99,25 +109,23 @@ export function createTranscript(root: HTMLElement): TranscriptView {
 			root.insertBefore(fragment, liveSlot);
 		}
 		renderLive(snapshot);
-		root.classList.toggle("empty", blocks.length === 0 && liveSlot.firstElementChild === null);
+		refreshEmpty();
 	};
 
 	const reset = (): void => {
-		if (swapTimer !== undefined) {
-			clearTimeout(swapTimer);
-			swapTimer = undefined;
-		}
 		renderedGroups = [];
 		renderedNodes = [];
 		rows.clear();
-		live = { shape: "" };
-		liveSlot.replaceChildren();
-		liveSlot.classList.remove("enter");
+		queuedSig = "";
+		liveBubbles.length = 0;
+		queuedHost.replaceChildren();
+		bubbleHost.replaceChildren();
+		liveSlot.replaceChildren(queuedHost, bubbleHost);
 		root.replaceChildren(liveSlot);
 		root.classList.add("empty");
 	};
 
-	/* ---------- blocks and turns ---------- */
+	/* ---------- settled blocks ---------- */
 
 	const renderBlock = (block: Block): HTMLElement | undefined => {
 		if (block.kind === "user") return renderMessage(block.entry.message);
@@ -135,273 +143,245 @@ export function createTranscript(root: HTMLElement): TranscriptView {
 		}
 	};
 
-	/** One settled assistant reply: the work collapses, the message stays. */
+	/** One settled assistant turn: only the messages; the traces are gone. */
 	const renderTurn = (turn: Turn): HTMLElement | undefined => {
-		const trace: HTMLElement[] = [];
-		const texts: string[] = [];
-		const callTimes = new Map<string, number>();
+		const bubbles = groupBubbles(turnPieces(turn, undefined, [])).filter((bubble) => bubble.text !== "");
+		const errors: string[] = [];
 		for (const entry of turn.entries) {
 			const message = entry.message;
-			if (message.role === "toolResult") {
-				const started = message.toolCallId === undefined ? undefined : callTimes.get(message.toolCallId);
-				const duration =
-					started === undefined || entry.timestamp === undefined ? undefined : stepDuration(entry.timestamp - started);
-				const panel = rows.result(message, duration);
-				if (panel !== undefined) trace.push(panel);
-				continue;
-			}
-			for (const block of messageBlocks(message)) if (isToolCall(block)) callTimes.set(block.id, entry.timestamp);
-			trace.push(...messageRows(message));
-			const blocks = messageBlocks(message);
-			const hasCalls = blocks.some(isToolCall);
-			for (const block of blocks) {
-				if (block.type === "text" && block.text.trim() !== "" && !hasCalls) texts.push(block.text);
-			}
-			if (message.stopReason === "error" && message.errorMessage !== undefined) trace.push(note(message.errorMessage));
+			if (message.stopReason === "error" && message.errorMessage !== undefined) errors.push(message.errorMessage);
 		}
-		if (trace.length === 0 && texts.length === 0) return undefined;
+		if (bubbles.length === 0 && errors.length === 0) return undefined;
 		const article = document.createElement("article");
 		article.className = "message assistant";
+		for (const bubble of bubbles) {
+			const box = document.createElement("div");
+			box.className = "bubble";
+			box.append(markdown(bubble.text));
+			article.append(box);
+		}
+		for (const error of errors) article.append(note(error));
+		return article;
+	};
+
+	const renderMessage = (message: MessageLike): HTMLElement => {
+		const article = document.createElement("article");
+		article.className = "message user";
+		if (message.isError === true || message.stopReason === "error") article.classList.add("error");
 		const bubble = document.createElement("div");
 		bubble.className = "bubble";
-		if (trace.length > 0) {
-			const details = document.createElement("details");
-			details.className = "trace";
-			const summary = document.createElement("summary");
-			summary.textContent = workedFor(turn);
-			const body = document.createElement("div");
-			body.className = "trace-body";
-			body.append(...trace);
-			details.append(summary, body);
-			bubble.append(details);
+		const text = textOf(message);
+		const skill = parseSkillInvocation(text);
+		if (skill === null) {
+			bubble.textContent = text;
+		} else {
+			bubble.append(skillChip(skill));
+			if (skill.args !== undefined) {
+				const args = document.createElement("div");
+				args.className = "skill-args";
+				args.textContent = skill.args;
+				bubble.append(args);
+			}
 		}
-		for (const text of texts) bubble.append(markdown(text));
 		article.append(bubble);
 		return article;
 	};
 
-	/**
-	 * The trace rows of one settled message: thinking, tool calls and the text
-	 * the model wrote next to them (an explainer, not the answer).
-	 */
-	const messageRows = (
-		message: MessageLike,
-		runningIds?: ReadonlySet<string>,
-		openReasoning = false,
-	): HTMLElement[] => {
-		const out: HTMLElement[] = [];
-		const blocks = messageBlocks(message);
-		const hasCalls = blocks.some(isToolCall);
-		for (const block of blocks) {
-			if (block.type === "thinking" && block.thinking.trim() !== "") {
-				const details = collapsible("thinking", block.thinking);
-				if (openReasoning) openByUs(details);
-				out.push(details);
-			} else if (block.type === "toolCall") out.push(rows.step(block, runningIds?.has(block.id) ?? false));
-			else if (block.type === "text" && block.text.trim() !== "" && hasCalls) out.push(explainer(block.text));
+	/** A skill invocation: the name in a chip, its description on hover. */
+	const skillChip = (skill: SkillInvocation): HTMLElement => {
+		const chip = document.createElement("span");
+		chip.className = "skill-chip";
+		chip.append(document.createTextNode(skill.name));
+		if (skill.description !== undefined) {
+			const tip = document.createElement("span");
+			tip.className = "skill-tip";
+			tip.textContent = skill.description;
+			chip.append(tip);
 		}
-		return out;
+		return chip;
 	};
 
-	/* ---------- the live working block ---------- */
+	/* ---------- the live bubbles ---------- */
 
 	const renderLive = (snapshot: TranscriptSnapshot): void => {
 		const operation = snapshot.operation;
 		const queued = queuedMessages(snapshot);
-		const streaming = operation?.streamingMessage;
-		const tools = operation?.runningTools ?? [];
-		const text = streaming === undefined ? "" : blockText(streaming, "text");
-		const thinking = streaming === undefined ? "" : blockText(streaming, "thinking");
-		const queuedIds = queued.map((item) => item.entryId).join(",");
+		const nextQueuedSig = queued.map((item) => item.entryId).join(",");
+		if (nextQueuedSig !== queuedSig) {
+			queuedSig = nextQueuedSig;
+			queuedHost.replaceChildren(...queued.map(queuedMessage));
+		}
+		if (operation === null || operation === undefined) {
+			clearBubbles();
+			return;
+		}
 		const blocks = groupEntries(snapshot.transcript);
 		const last = blocks.length > 0 ? blocks[blocks.length - 1] : undefined;
 		const turn = last !== undefined && last.kind === "turn" ? last.turn : undefined;
-		const turnIds = turn === undefined ? "" : turn.entries.map((entry) => entry.id).join(",");
-		const shape = JSON.stringify({
-			id: operation?.id ?? null,
-			status: operation?.status ?? null,
-			deferred: operation?.deferred !== undefined,
-			queued: queuedIds,
-			turn: turnIds,
-			blocks: messageBlocks(streaming).map((block) => block.type),
-			tools: tools.map((tool) => `${tool.toolCallId}:${tool.status}`),
-			streaming: streaming !== undefined,
-			hasText: text.trim() !== "",
-		});
-		if (shape === live.shape) {
-			// The same nodes, with more content: extend what is already rendered.
-			if (live.text !== undefined && text !== live.textSource) {
-				live.textSource = text;
-				live.text.update(text);
+		const deferred = operation.deferred !== undefined;
+		const bubbles = groupBubbles(turnPieces(turn, operation.streamingMessage, operation.runningTools ?? []));
+		for (let index = 0; index < bubbles.length; index += 1) {
+			const bubble = bubbles[index];
+			let live = liveBubbles[index];
+			if (live === undefined || live.key !== bubble.key) {
+				for (const stale of liveBubbles.splice(index)) stale.element.remove();
+				live = createLiveBubble(bubble, deferred);
+				liveBubbles.push(live);
 			}
-			if (live.thinking !== undefined && thinking !== live.thinking.source) {
-				live.thinking.source = thinking;
-				live.thinking.element.textContent = thinking;
-			}
-			return;
+			updateLiveBubble(live, bubble, deferred);
 		}
-		live.shape = shape;
-		// The answer is on screen and still streaming: keep it, only the trace
-		// around it changes (a full swap would blink the whole answer).
-		if (
-			live.text !== undefined &&
-			live.root !== undefined &&
-			text.trim() !== "" &&
-			queuedIds === live.queuedIds &&
-			turnIds === live.turnIds
-		) {
-			live.text.update(text);
-			updateLiveTrace(live.root, turn, streaming, tools);
-			return;
-		}
-		live.text = undefined;
-		live.textSource = undefined;
-		live.root = undefined;
-		live.thinking = undefined;
-		live.queuedIds = queuedIds;
-		live.turnIds = turnIds;
-		const fragment = document.createDocumentFragment();
-		for (const item of queued) fragment.append(queuedMessage(item));
-		if (operation !== null && operation !== undefined) {
-			const view = createLiveView(turn, streaming, tools, operation.deferred !== undefined);
-			live.root = view;
-			fragment.append(view);
-		}
-		swapLive(fragment);
+		while (liveBubbles.length > bubbles.length) liveBubbles.pop()?.element.remove();
 	};
 
-	/**
-	 * The working block: one bubble holding the whole trace of the running turn
-	 * under a "Working" row, with the answer (or explainer) streaming into it.
-	 */
-	const createLiveView = (
-		turn: Turn | undefined,
-		streaming: MessageLike | undefined,
-		tools: RunningTool[],
-		deferred: boolean,
-	): HTMLElement => {
+	const createLiveBubble = (bubble: Bubble, deferred: boolean): LiveBubble => {
 		const article = document.createElement("article");
 		article.className = "message assistant streaming";
-		const bubble = document.createElement("div");
-		bubble.className = "bubble";
-		article.append(bubble);
+		article.classList.add("enter");
+		const box = document.createElement("div");
+		box.className = "bubble";
+		article.append(box);
+		bubbleHost.append(article);
+		const live: LiveBubble = { key: bubble.key, element: article, bubble: box, thinking: new Map() };
+		if (bubble.text === "") {
+			attachTrace(live);
+			updateTrace(live, bubble, deferred);
+		} else {
+			live.text = createStream();
+			live.textSource = bubble.text;
+			live.text.update(bubble.text);
+			box.append(live.text.wrap);
+		}
+		return live;
+	};
+
+	const updateLiveBubble = (live: LiveBubble, bubble: Bubble, deferred: boolean): void => {
+		if (bubble.text !== "" && live.text === undefined) {
+			// The model started writing: the trace collapses, the message takes the bubble.
+			collapseTrace(live);
+			live.text = createStream();
+			live.textSource = bubble.text;
+			live.text.update(bubble.text);
+			live.bubble.append(live.text.wrap);
+			return;
+		}
+		if (live.text !== undefined && bubble.text !== live.textSource) {
+			live.textSource = bubble.text;
+			live.text.update(bubble.text);
+		}
+		if (bubble.text === "") {
+			if (live.trace === undefined) attachTrace(live);
+			updateTrace(live, bubble, deferred);
+		}
+	};
+
+	const attachTrace = (live: LiveBubble): void => {
 		const details = document.createElement("details");
 		details.className = "trace live";
 		openByUs(details);
 		const summary = document.createElement("summary");
-		summary.append(document.createTextNode(deferred ? "Waiting" : "Working"));
+		const label = document.createTextNode("Working");
 		const spinner = document.createElement("span");
 		spinner.className = "jump-ring";
-		summary.append(spinner);
+		summary.append(label, spinner);
 		const body = document.createElement("div");
 		body.className = "trace-body";
-		body.append(...traceBodyRows(turn, streaming, tools));
 		details.append(summary, body);
-		bubble.append(details);
-		const text = streaming === undefined ? "" : blockText(streaming, "text");
-		if (text.trim() !== "") {
-			const stream = createStream();
-			stream.update(text);
-			live.text = stream;
-			live.textSource = text;
-			// text next to tool calls is an explainer and belongs in the trace
-			const hasCalls = streaming !== undefined && messageBlocks(streaming).some(isToolCall);
-			if (hasCalls) body.append(stream.wrap);
-			else bubble.append(stream.wrap);
-		}
-		return article;
+		live.label = label;
+		live.trace = details;
+		live.traceBody = body;
+		live.traceSig = undefined;
+		live.bubble.append(details);
 	};
 
-	/** Everything the running turn has done so far, in order. */
-	const traceBodyRows = (
-		turn: Turn | undefined,
-		streaming: MessageLike | undefined,
-		tools: RunningTool[],
-	): HTMLElement[] => {
-		const out: HTMLElement[] = [];
-		const runningIds = new Set(tools.filter((tool) => tool.status === "running").map((tool) => tool.toolCallId));
-		const covered = new Set<string>();
-		const callTimes = new Map<string, number>();
-		if (turn !== undefined) {
-			for (const entry of turn.entries) {
-				const message = entry.message;
-				if (message.role === "toolResult") {
-					const started = message.toolCallId === undefined ? undefined : callTimes.get(message.toolCallId);
-					const duration =
-						started === undefined || entry.timestamp === undefined
-							? undefined
-							: stepDuration(entry.timestamp - started);
-					const panel = rows.result(message, duration);
-					if (panel !== undefined) out.push(panel);
-					continue;
-				}
-				for (const block of messageBlocks(message)) {
-					if (!isToolCall(block)) continue;
-					covered.add(block.id);
-					callTimes.set(block.id, entry.timestamp);
-				}
-				out.push(...messageRows(message, runningIds, true));
-			}
+	const updateTrace = (live: LiveBubble, bubble: Bubble, deferred: boolean): void => {
+		if (live.traceBody === undefined) return;
+		const signature = traceSignature(bubble.trace, deferred);
+		if (signature === live.traceSig) return;
+		live.traceSig = signature;
+		if (live.label !== undefined) live.label.nodeValue = deferred ? "Waiting" : "Working";
+		const nodes: HTMLElement[] = [];
+		for (const piece of bubble.trace) {
+			const node = traceNode(live, piece);
+			if (node !== undefined) nodes.push(node);
 		}
-		const streamingCalls = streaming === undefined ? [] : messageBlocks(streaming).filter(isToolCall);
-		for (const block of streamingCalls) covered.add(block.id);
-		if (streaming !== undefined) {
-			const thinking = blockText(streaming, "thinking");
-			if (thinking.trim() !== "") {
-				const details = collapsible("thinking", thinking);
+		live.traceBody.replaceChildren(...nodes);
+	};
+
+	/** Rebuild only when the trace really changed; thinking grows in place. */
+	const traceSignature = (pieces: readonly TracePiece[], deferred: boolean): string =>
+		pieces
+			.map((piece) => {
+				if (piece.kind === "thinking") return `t:${piece.id}:${piece.text.length}`;
+				if (piece.kind === "toolCall") return `c:${piece.id}:${piece.running}`;
+				if (piece.kind === "toolLive") return `l:${piece.id}:${piece.tool.status}`;
+				return `r:${piece.id}`;
+			})
+			.join("|") + `:${deferred}`;
+
+	const traceNode = (live: LiveBubble, piece: TracePiece): HTMLElement | undefined => {
+		switch (piece.kind) {
+			case "thinking": {
+				const existing = live.thinking.get(piece.id);
+				if (existing !== undefined) {
+					existing.pre.textContent = piece.text;
+					return existing.details;
+				}
+				const details = collapsible("thinking", piece.text);
 				openByUs(details);
-				out.push(details);
-				live.thinking = { element: details.querySelector("pre") as HTMLPreElement, source: thinking };
+				live.thinking.set(piece.id, { details, pre: details.querySelector("pre") as HTMLPreElement });
+				return details;
 			}
-			for (const block of streamingCalls) out.push(rows.step(block, runningIds.has(block.id)));
+			case "toolCall":
+				return rows.step(piece.block, piece.running);
+			case "toolResult":
+				return rows.result(piece.message, piece.duration);
+			case "toolLive":
+				return rows.running(piece.tool);
 		}
-		for (const tool of tools) {
-			if (covered.has(tool.toolCallId)) continue;
-			out.push(rows.running(tool));
-		}
-		return out;
 	};
 
-	/** Rebuild the trace of the working block in place, keeping the answer text. */
-	const updateLiveTrace = (
-		view: HTMLElement,
-		turn: Turn | undefined,
-		streaming: MessageLike | undefined,
-		tools: RunningTool[],
-	): void => {
-		const bubble = view.querySelector<HTMLElement>(".bubble");
-		const body = bubble?.querySelector<HTMLElement>(".trace-body");
-		if (bubble === null || bubble === undefined || body === null || body === undefined) return;
-		live.thinking = undefined;
-		body.replaceChildren(...traceBodyRows(turn, streaming, tools));
-		const stream = live.text;
-		if (stream === undefined) return;
-		const hasCalls = streaming !== undefined && messageBlocks(streaming).some(isToolCall);
-		(hasCalls ? body : bubble).append(stream.wrap);
+	const collapseTrace = (live: LiveBubble): void => {
+		const trace = live.trace;
+		live.trace = undefined;
+		live.traceBody = undefined;
+		live.traceSig = undefined;
+		if (trace === undefined) return;
+		if (reducedMotion()) {
+			trace.remove();
+			return;
+		}
+		const height = trace.offsetHeight;
+		trace.style.overflow = "hidden";
+		const animation = trace.animate(
+			[
+				{ height: `${height}px`, opacity: 1 },
+				{ height: "0px", opacity: 0 },
+			],
+			{ duration: COLLAPSE_MS, easing: EASE },
+		);
+		animation.onfinish = () => trace.remove();
 	};
 
-	/** Replace the live slot: the outgoing content fades out, the new fades in. */
-	const swapLive = (fragment: DocumentFragment): void => {
-		const place = (): void => {
-			liveSlot.replaceChildren(fragment);
-			for (const node of liveSlot.children) node.classList.add("enter");
-		};
-		const previous = [...liveSlot.children];
-		if (swapTimer !== undefined) {
-			clearTimeout(swapTimer);
-			swapTimer = undefined;
-			place();
-			return;
+	const clearBubbles = (): void => {
+		if (liveBubbles.length === 0) return;
+		const last = liveBubbles[liveBubbles.length - 1];
+		// A turn that ended without a message fades its trace out; one that
+		// ended with messages hands over to the settled node in the same paint.
+		const fade = last !== undefined && last.text === undefined && !reducedMotion();
+		for (const live of liveBubbles) {
+			if (live !== last || !fade) live.element.remove();
 		}
-		if (previous.length === 0 || fragment.childNodes.length === 0) {
-			place();
-			return;
+		liveBubbles.length = 0;
+		if (fade && last !== undefined) {
+			const animation = last.element.animate([{ opacity: 1 }, { opacity: 0 }], {
+				duration: COLLAPSE_MS,
+				easing: EASE,
+			});
+			animation.onfinish = () => {
+				last.element.remove();
+				refreshEmpty();
+			};
 		}
-		for (const node of previous) node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: EASE });
-		swapTimer = window.setTimeout(() => {
-			swapTimer = undefined;
-			place();
-		}, 150);
 	};
 
 	/* ---------- small pieces ---------- */
@@ -423,25 +403,6 @@ export function createTranscript(root: HTMLElement): TranscriptView {
 		bubble.append(tag);
 		article.append(bubble);
 		return article;
-	};
-
-	const renderMessage = (message: MessageLike): HTMLElement => {
-		const article = document.createElement("article");
-		article.className = "message user";
-		if (message.isError === true || message.stopReason === "error") article.classList.add("error");
-		const bubble = document.createElement("div");
-		bubble.className = "bubble";
-		bubble.textContent = textOf(message);
-		article.append(bubble);
-		return article;
-	};
-
-	/** Text the model wrote while working: as clear as the final answer. */
-	const explainer = (text: string): HTMLElement => {
-		const row = document.createElement("div");
-		row.className = "explainer markdown";
-		row.innerHTML = renderMarkdown(text);
-		return row;
 	};
 
 	const markdown = (source: string): HTMLElement => {
@@ -497,56 +458,3 @@ export function createTranscript(root: HTMLElement): TranscriptView {
 		ownsToggle: (target) => target instanceof Element && openedByUs.has(target),
 	};
 }
-
-/** Group a transcript into user messages, assistant turns and system notes. */
-export function groupEntries(entries: Entry[]): Block[] {
-	const blocks: Block[] = [];
-	let turn: Turn | undefined;
-	let askedAt: number | undefined;
-	const flush = (): void => {
-		if (turn !== undefined) blocks.push({ kind: "turn", turn });
-		turn = undefined;
-	};
-	for (const entry of entries) {
-		if (entry.type === "message" && entry.message.role === "user") {
-			flush();
-			askedAt = entry.timestamp;
-			blocks.push({ kind: "user", entry });
-			continue;
-		}
-		if (entry.type === "message") {
-			turn ??= { entries: [] };
-			turn.startedAt ??= askedAt ?? entry.timestamp;
-			turn.entries.push(entry);
-			if (entry.timestamp !== undefined) turn.endedAt = entry.timestamp;
-			continue;
-		}
-		flush();
-		blocks.push({ kind: "note", entry });
-	}
-	flush();
-	return blocks;
-}
-
-function blockSignature(block: Block, tailRunning: boolean): string {
-	if (block.kind === "user") return `user:${block.entry.id}`;
-	if (block.kind === "note") return `note:${block.entry.id}`;
-	const ids = block.turn.entries.map((entry) => entry.id).join(",");
-	return `turn:${ids}:${tailRunning ? "running" : "settled"}`;
-}
-
-function workedFor(turn: Turn): string {
-	const start = turn.startedAt;
-	const end = turn.endedAt;
-	if (start === undefined || end === undefined || end < start) return "worked";
-	return `worked for ${formatDuration(end - start)}`;
-}
-
-export function formatDuration(ms: number): string {
-	const seconds = Math.max(1, Math.round(ms / 1000));
-	if (seconds < 60) return `${seconds} s`;
-	const minutes = Math.floor(seconds / 60);
-	return `${minutes} min ${seconds % 60} s`;
-}
-
-const EASE = "cubic-bezier(0.2, 0, 0, 1)";
