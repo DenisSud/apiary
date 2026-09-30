@@ -1,9 +1,9 @@
 /**
  * sysinfo — fastfetch-style system info injection
  *
- * Discovers OS, hardware, time, and locale metadata on session start
- * and injects it into the system prompt so the model knows the machine
- * it's running on.
+ * Discovers OS, hardware, time, and locale metadata on session start and
+ * contributes them as the <system_info> prompt section, so the model knows
+ * the machine it's running on without forcing a whole system prompt.
  */
 import * as os from "node:os";
 import * as fs from "node:fs";
@@ -144,21 +144,8 @@ export default function sysinfo(pi: ExtensionAPI) {
       .join("\n");
   });
 
-  pi.on("before_agent_start", async (event) => {
-    if (!staticInfoText) return;
-
-    return {
-      systemPrompt:
-        event.systemPrompt +
-        `
-
-## System Information
-
-You are running on the following machine:
-
-${staticInfoText}
-Current time: ${new Date().toString()}
-`,
-    };
+  pi.on("before_agent_start", (event) => {
+    const lines = [staticInfoText, `Current time: ${new Date().toString()}`].filter(Boolean);
+    event.systemPromptOptions.sections.system_info = `You are running on the following machine:\n\n${lines.join("\n")}`;
   });
 }

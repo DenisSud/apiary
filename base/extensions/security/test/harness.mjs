@@ -29,7 +29,7 @@ import { loadConfig } from "../config.ts";
 import { resolveAll, resolveProfile } from "../rbw.ts";
 import { Redactor, placeholder, redactDeep } from "../redact.ts";
 import { checkCommand, checkToolInput } from "../guard.ts";
-import { getPtcTool } from "../../ptc/registry.ts";
+import { getPtcTool } from "../../../../registry/ptc/registry.ts";
 
 // ── tiny test runner ──────────────────────────────────────────────────────
 
@@ -347,9 +347,9 @@ test("guard: tool inputs", () => {
 
 test("guard: ptc allows source-file mentions, blocks executions", () => {
 	const allowed = [
-		'const { resolveProfile } = await import("/home/denis/dev/pi-bots/extensions/security/rbw.ts");',
-		'const src = readFileSync("extensions/security/rbw.ts", "utf8");',
-		'await sh({ command: "grep -n resolveProfile extensions/security/rbw.ts" });',
+		'const { resolveProfile } = await import("base/extensions/security/rbw.ts");',
+		'const src = readFileSync("base/extensions/security/rbw.ts", "utf8");',
+		'await sh({ command: "grep -n resolveProfile base/extensions/security/rbw.ts" });',
 		'// resolveProfile lives in security/rbw.ts',
 	];
 	for (const code of allowed) {
@@ -526,12 +526,13 @@ test("before_provider_request: scrubs nested payload in place", async () => {
 });
 
 test("ptc registry: separate module instances share one store (pi isolates extensions)", async () => {
-	// pi loads each extension with its own module instance, so a module-scoped
-	// registry would hide registrations from the ptc extension.
-	const url = new URL("../../ptc/registry.ts", import.meta.url);
+	// pi loads each extension with its own module instance, and base and
+	// registry ship separate copies of the helper — both must land in one
+	// process-wide store keyed by Symbol.for.
+	const url = new URL("../../../lib/ptc.ts", import.meta.url);
 	const isolated = await import(`${url.href}?instance=2`);
 	isolated.registerPtcTool("__isolation_probe__", () => "first");
-	assert(getPtcTool("__isolation_probe__")?.run() === "first", "visible through the first instance");
+	assert(getPtcTool("__isolation_probe__")?.run() === "first", "visible through the registry copy");
 	isolated.registerPtcTool("__isolation_probe__", () => "second");
 	assert(getPtcTool("__isolation_probe__")?.run() === "second", "last write wins across instances");
 });

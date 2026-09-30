@@ -6,6 +6,7 @@
  *
  *   ./test/run.sh harness
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -67,6 +68,11 @@ const resultText = (res) => res.content[0].text;
 
 // ── setup ─────────────────────────────────────────────────────────────────
 
+// pi-manager initializes bot repos; simulate that for the agent scope.
+mkdirSync(AGENT, { recursive: true });
+execFileSync("git", ["-C", AGENT, "init", "-q", "-b", "main"]);
+execFileSync("git", ["-C", AGENT, "commit", "--allow-empty", "-q", "-m", "scaffold"]);
+
 const pi = stubPi();
 factory(pi);
 const search = pi.tools.get("memory_search");
@@ -103,6 +109,9 @@ test("write creates a note with frontmatter and an index", async () => {
   const index = readFileSync(join(AGENT, "notes", "index.md"), "utf-8");
   assert(index.includes("GKS-U deadlines"), "index lists the note");
   assert(index.includes("do not edit"), "index marks itself generated");
+
+  const log = execFileSync("git", ["-C", AGENT, "log", "-1", "--format=%s"], { encoding: "utf-8" }).trim();
+  assert(/^\[base\] \d{4}-\d{2}-\d{2}T.* wrote agent:gks-u-deadlines\.md$/.test(log), `commit message: ${log}`);
 });
 
 test("search finds by text, tag and body", async () => {
@@ -118,6 +127,63 @@ test("search finds by text, tag and body", async () => {
 
   res = await runTool(search, { query: "no-such-thing-anywhere" });
   assert(resultText(res).includes("No notes match"), "empty search is clean");
+});
+
+test("search is fuzzy — typos, partial words, any order", async () => {
+  const written = await runTool(write, {
+    title: "Homelab deployment",
+    description: "Layout of the homelab machines and how to deploy services.",
+    body: "NixOS hosts behind Caddy.",
+    tags: ["homelab"],
+    scope: "global",
+  });
+  assert(!written.isError, resultText(written));
+
+  let res = await runTool(search, { query: "homlab deploment" });
+  assert(resultText(res).includes("homelab-deployment.md"), "typos match");
+
+  res = await runTool(search, { query: "deploy homelab" });
+  assert(resultText(res).includes("homelab-deployment.md"), "word order does not matter");
+
+  res = await runTool(search, { query: "homel" });
+  assert(resultText(res).includes("homelab-deployment.md"), "partial word matches");
+
+  res = await runTool(search, { query: "labhome" });
+  assert(!resultText(res).includes("homelab-deployment.md"), "out-of-order letters do not match");
+
+  res = await runTool(search, { tags: ["homelab"] });
+  assert(resultText(res).includes("homelab-deployment.md"), "tag still matches");
+
+  res = await runTool(search, { tags: ["homelb"] });
+  assert(!resultText(res).includes("homelab-deployment.md"), "tags stay exact");
+});
+
+test("search ranks title matches above body-only matches", async () => {
+  await runTool(write, {
+    title: "Forgejo setup",
+    description: "How the Forgejo instance is configured.",
+    body: "Runs on the homelab server.",
+    scope: "global",
+  });
+  await runTool(write, {
+    title: "Git hosting",
+    description: "Where the code repositories live.",
+    body: "The Forgejo server runs at git.sudakov.site.",
+    scope: "global",
+  });
+  const res = await runTool(search, { query: "forgejo" });
+  const text = resultText(res);
+  assert(text.includes("forgejo-setup.md") && text.includes("git-hosting.md"), `both notes found: ${text}`);
+  assert(text.indexOf("forgejo-setup.md") < text.indexOf("git-hosting.md"), "title match ranks first");
+});
+
+test("fuzzy score: in-order subsequence, compact beats scattered", () => {
+  assert(mod.fuzzyScore("homlab", "Homelab deployment") > 0, "typo is a match");
+  assertEqual(mod.fuzzyScore("labhome", "Homelab deployment"), undefined, "wrong order is not a match");
+  assertEqual(mod.fuzzyScore("zzz", "Homelab deployment"), undefined, "missing letters are not a match");
+  const compact = mod.fuzzyScore("deploy", "Homelab deployment");
+  const scattered = mod.fuzzyScore("dmt", "Homelab deployment");
+  assert(compact !== undefined && scattered !== undefined && compact > scattered, "compact beats scattered");
 });
 
 test("read returns the full note", async () => {
@@ -214,14 +280,29 @@ test("description with a colon survives the round trip", async () => {
   assert(resultText(found).includes("Colons: a test"), "survived");
 });
 
-test("injection carries policy, SOUL and USER", () => {
-  writeFileSync(join(AGENT, "SOUL.md"), "# SOUL\n\nCalm and curious.\n");
+test("SOUL becomes the preamble and the memory section carries policy and USER", () => {
+  writeFileSync(
+    join(AGENT, "SOUL.md"),
+    "<!-- pi:managed -->\nYou are the dev bot.\n<!-- /pi:managed -->\n\n<!-- a comment -->\n## Voice\nCalm and curious.\n",
+  );
   writeFileSync(join(SHARED, "USER.md"), "# Denis\n\nWorks on ML systems.\n");
-  const context = mod.buildMemoryContext();
-  assert(context.includes("Memory is a few files"), "policy present");
-  assert(context.includes("Calm and curious"), "agent SOUL present");
-  assert(context.includes("Works on ML systems"), "USER present");
-  assert(!context.includes("index.md"), "no index content injected");
+
+  const section = mod.buildMemorySection();
+  assert(section.includes("Memory is a few files"), "policy present");
+  assert(section.includes("Works on ML systems"), "USER present");
+  assert(!section.includes("Calm and curious"), "SOUL stays out of the memory section");
+  assert(!section.includes("index.md"), "no index content injected");
+
+  const soul = mod.readSoul();
+  assert(soul.includes("You are the dev bot."), "managed block kept");
+  assert(soul.includes("Calm and curious."), "prose kept");
+  assert(!soul.includes("pi:managed"), "marker comments stripped");
+  assert(!soul.includes("a comment"), "comments stripped");
+
+  const options = {};
+  pi.handlers.before_agent_start({ systemPromptOptions: options });
+  assertEqual(options.customPrompt, soul, "preamble from SOUL");
+  assert(options.memoryPrompt.includes("Memory is a few files"), "memory section set");
 });
 
 test("base agent (agent dir == shared dir) collapses to one note set", async () => {
@@ -250,6 +331,53 @@ test("base agent (agent dir == shared dir) collapses to one note set", async () 
     delete process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = AGENT;
     process.env.PI_MEMORY_DIR = SHARED;
+  }
+});
+
+test("BEHAVIOR becomes the behavior section", () => {
+  writeFileSync(join(AGENT, "BEHAVIOR.md"), "# Behavior\n\nAsk first.\n<!-- hidden -->\n");
+  const behavior = mod.readBehavior();
+  assert(behavior.includes("Ask first."), "behavior read");
+  assert(!behavior.includes("hidden"), "comments stripped");
+
+  const options = {};
+  pi.handlers.before_agent_start({ systemPromptOptions: options });
+  assertEqual(options.behaviorPrompt, behavior, "behavior prompt set");
+});
+
+test("memoryGlobal: false turns the shared root off", async () => {
+  writeFileSync(join(AGENT, "settings.json"), JSON.stringify({ memoryGlobal: false }));
+  try {
+    const written = await runTool(write, {
+      title: "Local only",
+      description: "Agent-scope note while the shared root is off.",
+      body: "x",
+    });
+    assert(!written.isError, resultText(written));
+    assertEqual(written.details.root, "agent", "agent write works");
+
+    const globalWrite = await runTool(write, {
+      title: "Nope",
+      description: "Should be refused.",
+      body: "x",
+      scope: "global",
+    });
+    assert(globalWrite.isError, "global write refused");
+
+    const globalRead = await runTool(read, { root: "global", path: "pc-gpu.md" });
+    assert(globalRead.isError, "global read refused");
+
+    const globalSearch = await runTool(search, { query: "RTX", scope: "global" });
+    assert(globalSearch.isError, "global search refused");
+
+    const allSearch = await runTool(search, { query: "Local only" });
+    assert(!allSearch.isError && resultText(allSearch).includes("local-only.md"), "all search stays agent-only");
+
+    const section = mod.buildMemorySection();
+    assert(section.includes("disabled for this agent"), "policy reflects the toggle");
+    assert(!section.includes("=== USER.md ==="), "USER.md not injected");
+  } finally {
+    rmSync(join(AGENT, "settings.json"), { force: true });
   }
 });
 

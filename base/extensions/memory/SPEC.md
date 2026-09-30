@@ -4,7 +4,26 @@
 > progressive-disclosure core but replaces the shared SOUL / memory.md /
 > category-index injection with per-agent SOUL + notes, a shared USER.md,
 > generated indexes, and `memory_search` / `memory_read` / `memory_write`.
-> Design record: `~/Bots/docs/memory.md`.
+>
+> **Updated 2026-09-29 by v3.** SOUL.md becomes the system prompt preamble
+> (`customPrompt`), the extension contributes a `<memory>` section (policy +
+> USER.md) instead of forcing a whole prompt, every write is auto-committed
+> path-scoped and attributed to the bot, and the shared notes repo is one
+> machine-wide `~/.pi/agent/memory` (no per-bot clones).
+> Design record: the deployment's memory design notes (outside this package).
+
+> **Updated 2026-09-30 by v3.1.** BEHAVIOR.md joins SOUL.md: a plain file at
+> the agent dir, rendered as the always-on `<behavior>` section; both files
+> are edited by the agent and its user under the policy text. `memoryGlobal:
+> false` in the agent's settings.json disables the shared notes root (the
+> tools refuse writes/reads there), leaving only the agent's own set.
+
+> **Updated 2026-09-30 by v3.2.** `memory_search` matches fuzzily: every
+> query word must match (AND, in any order) as an in-order subsequence with
+> compaction and word-start bonuses, so typos and partial words match.
+> Results rank by match quality (title/description/tags/path above body),
+> not recency; terms shorter than 3 characters match as exact substrings;
+> `tags` remain exact.
 
 > Vendored 2026-09-23 from the `su-memory` package (archived) as the original
 design record. The implementation deviates in one place: there is no `skills/`

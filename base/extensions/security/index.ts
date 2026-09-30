@@ -25,7 +25,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createBashToolDefinition, createLocalBashOperations } from "@earendil-works/pi-coding-agent";
-import { registerPtcTool } from "../ptc/registry.ts";
+import { registerPtcTool } from "../../lib/ptc.ts";
 import { loadConfig, type SecurityConfig } from "./config.ts";
 import { checkToolInput } from "./guard.ts";
 import { resolveAll, resolveProfile } from "./rbw.ts";
