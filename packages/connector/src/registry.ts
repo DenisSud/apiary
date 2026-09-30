@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { isArchivedDir, isSetupPending } from "@pi-bots/pi-manager";
+import { isApplyPending, isArchivedDir, isSetupPending } from "@pi-bots/pi-manager";
 import { readJsonFile, removeFile, writeJsonAtomic } from "./files.ts";
 import { botsHome, isValidBotName, routePath } from "./paths.ts";
 
@@ -18,6 +18,8 @@ export interface BotInfo {
   archived: boolean;
   /** True while the agent still has to finish its `init` commit. */
   setup: boolean;
+  /** True while a post-commit apply marker waits for a reload. */
+  apply: boolean;
 }
 
 // Bots are directories under botsHome() that contain settings.json.
@@ -36,7 +38,14 @@ export function listBots(options: { includeArchived?: boolean } = {}): BotInfo[]
     if (!existsSync(join(dir, "settings.json"))) continue;
     const archived = isArchivedDir(dir);
     if (archived && !options.includeArchived) continue;
-    bots.push({ name, dir, hasRoute: existsSync(routePath(name)), archived, setup: isSetupPending(dir) });
+    bots.push({
+      name,
+      dir,
+      hasRoute: existsSync(routePath(name)),
+      archived,
+      setup: isSetupPending(dir),
+      apply: isApplyPending(dir),
+    });
   }
   return bots.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -322,9 +322,11 @@ pi-client + WebSocket byte transport   opaque byte relay + static files
 `packages/connector/bin/pi-bots-web [--host <host>] [--port <port>] [--web-dir <path>]`
 (default `127.0.0.1:8787`, web root `packages/web/dist`).
 
-- `GET /api/bots` → `{bots: [{name, dir, archived, setup, running, serverId, pid,
-  startedAt, lastSession}]}`. Reads the state files only; it never starts a
-  server. `setup` is true while the agent still has to commit `init`.
+- `GET /api/bots` → `{bots: [{name, dir, archived, setup, apply, running,
+  serverId, pid, startedAt, lastSession}]}`. Reads the state files only; it
+  never starts a server. `setup` is true while the agent still has to commit
+  `init`; `apply` is true while the post-commit hook's marker waits for a
+  reload.
 - Bot management (`packages/pi-manager` owns the lifecycle): `POST /api/bots`
   `{name}` (optionally `packages`, `thinking`) → 201 detail ·
   `GET /api/bots/:name` · `PATCH /api/bots/:name` (`packages`, `thinking`) ·

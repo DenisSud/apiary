@@ -490,6 +490,7 @@ function summarizeBot(bot: BotInfo): Record<string, unknown> {
     dir: bot.dir,
     archived: bot.archived,
     setup: bot.setup,
+    apply: bot.apply,
     running: route !== undefined,
     serverId: route?.serverId ?? null,
     pid: route?.pid ?? null,

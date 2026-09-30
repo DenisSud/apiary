@@ -107,6 +107,7 @@ function roundtrip(port: number, query: string, chunks: readonly Buffer[]): Prom
 test("GET /api/bots summarizes bots, routes, and the last session", async () => {
   setupState();
   makeBot("alpha");
+  writeFileSync(join(process.env.PI_BOTS_HOME!, "alpha", ".apply"), "{}\n");
   writeRoute("alpha", {
     serverId: SERVER_ID,
     socketPath: "/tmp/alpha.sock",
@@ -126,6 +127,7 @@ test("GET /api/bots summarizes bots, routes, and the last session", async () => 
     assert.equal(bot.dir, join(process.env.PI_BOTS_HOME!, "alpha"));
     assert.equal(bot.running, true);
     assert.equal(bot.setup, false);
+    assert.equal(bot.apply, true);
     assert.equal(bot.serverId, SERVER_ID);
     assert.equal(bot.pid, 42);
     assert.deepEqual(bot.lastSession, {
