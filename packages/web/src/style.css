@@ -11,6 +11,9 @@
 	--surface-2: #ececee;
 	--elevated: #ffffff;
 	--bubble: #f0f0f2;
+	--bubble-user: #e8edfa;
+	--glass: color-mix(in srgb, var(--bg) 76%, transparent);
+	--glass-blur: blur(16px) saturate(160%);
 	--border: #e8e8eb;
 	--composer-border: #e2e4e9;
 	--text: #1c1c1e;
@@ -27,6 +30,8 @@
 	--error-bg: #fdf1f1;
 	--warn: #b06e15;
 	--warn-bg: #faf4ea;
+	--composer-space: 63px; /* fallback; composer.ts publishes the real one */
+	--bar-h: 56px; /* the glass bar floats; #transcript pads by it */
 	--r-chip: 6px;
 	--r-panel: 12px;
 	--r-bubble: 16px;
@@ -48,6 +53,7 @@
 		--surface-2: #24272d;
 		--elevated: #1f232a;
 		--bubble: #262a31;
+		--bubble-user: #232a3d;
 		--border: #2c3037;
 		--composer-border: #2f333b;
 		--text: #edeef0;
@@ -90,9 +96,10 @@ body {
 #app {
 	display: flex;
 	height: 100vh;
+	overflow: hidden; /* the pushed chat is cut off at the viewport edge */
 }
 
-/* ===== scrim behind the phone drawer ===== */
+/* ===== scrim behind the pushed chat on a narrow screen ===== */
 #scrim {
 	position: fixed;
 	inset: 0;
@@ -115,6 +122,7 @@ body.drawer-open #scrim {
 	background: var(--surface);
 	padding: 14px 10px;
 	overflow-y: auto;
+	transition: margin-left var(--dur-in) var(--ease);
 }
 
 #sidebar h1 {
@@ -165,7 +173,15 @@ body.drawer-open #scrim {
 }
 
 #sidebar-close {
-	display: none; /* phone only */
+	color: var(--faint);
+}
+
+/* wide screens: the panel takes space; hiding it slides the panel out and
+   hands the room to the chat (the negative margin is clipped by #app) */
+body.panel-hidden #sidebar {
+	margin-left: -250px;
+	visibility: hidden;
+	transition: margin-left var(--dur-out) var(--ease), visibility 0s linear var(--dur-out);
 }
 
 #bot-list {
@@ -201,11 +217,11 @@ body.drawer-open #scrim {
 
 .avatar {
 	display: block;
-	width: 28px;
-	height: 28px;
+	width: 52px;
+	height: 52px;
 	flex: none;
 	user-select: none;
-	border-radius: 9px;
+	border-radius: 16px;
 }
 
 .avatar > svg {
@@ -255,17 +271,25 @@ body.drawer-open #scrim {
 }
 
 #menu {
-	display: none; /* phone only */
 	color: var(--text);
 }
 
 #session-bar {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 3;
 	display: flex;
 	align-items: center;
 	gap: 10px;
 	padding: 10px 16px;
 	border-bottom: 1px solid var(--border);
-	min-height: 52px;
+	min-height: var(--bar-h);
+	/* tinted glass: the transcript scrolls under the bar */
+	background: var(--glass);
+	-webkit-backdrop-filter: var(--glass-blur);
+	backdrop-filter: var(--glass-blur);
 }
 
 #session-title {
@@ -278,8 +302,8 @@ body.drawer-open #scrim {
 }
 
 #session-title .avatar {
-	width: 24px;
-	height: 24px;
+	width: 36px;
+	height: 36px;
 }
 #session-title .title-name {
 	white-space: nowrap;
@@ -385,7 +409,12 @@ body.drawer-open #scrim {
 	overscroll-behavior: contain;
 	display: flex;
 	flex-direction: column;
-	padding: 20px max(24px, calc((100% - 880px) / 2));
+	/* the floating composer's footprint is the padding; the last block's own
+	   10px rhythm then reads as the gap, same as between messages */
+	padding: calc(var(--bar-h) + 20px) max(24px, calc((100% - 880px) / 2)) var(--composer-space);
+	/* the composer floats over the end of the list: the last lines fade under it */
+	mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent 100%);
+	-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent 100%);
 }
 
 #transcript.empty::before {
@@ -455,12 +484,16 @@ body.drawer-open #scrim {
 	max-width: 78%;
 }
 
-.message.user .bubble {
-	position: relative;
+.message .bubble {
 	background: var(--bubble);
 	border-radius: var(--r-bubble);
 	padding: 9px 13px;
+}
+
+.message.user .bubble {
+	position: relative;
 	white-space: pre-wrap;
+	background: var(--bubble-user);
 }
 
 .message.user.queued .bubble {
@@ -480,16 +513,62 @@ body.drawer-open #scrim {
 	animation: breathe 2s var(--ease) infinite;
 }
 
+/* answers may run to the right edge of the user bubble, not the 78% pill */
 .message.assistant {
 	align-self: flex-start;
-	max-width: min(78%, 720px);
+	max-width: 100%;
 }
 
 /* the answer is a message too: same bubble as the user's, other side */
-.message.assistant .text.markdown {
-	background: var(--bubble);
-	border-radius: var(--r-bubble);
-	padding: 9px 13px;
+.message.assistant .bubble {
+	max-width: 100%;
+}
+
+/* the work behind an answer: one row that opens into the trace */
+.trace {
+	margin: 0;
+}
+.trace:not(:last-child) {
+	margin-bottom: 6px;
+}
+.trace > summary {
+	list-style: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--muted);
+	font-size: 13px;
+	padding: 1px 0 2px;
+}
+.trace > summary::-webkit-details-marker {
+	display: none;
+}
+.trace > summary::after {
+	content: "\203A";
+	font-size: 15px;
+	line-height: 1;
+	color: var(--faint);
+	transition: transform var(--dur-out) var(--ease);
+}
+.trace[open] > summary::after {
+	transform: rotate(90deg);
+}
+.trace-body {
+	padding: 2px 0;
+}
+
+/* while the turn runs the row carries a spinner instead of a chevron */
+.trace.live > summary::after {
+	display: none;
+}
+
+/* text the model wrote while working reads like the answer, not like thinking */
+.explainer {
+	color: var(--text);
+	font-size: 15px;
+	line-height: 1.55;
+	margin: 6px 0;
 }
 
 .message.assistant.error .text,
@@ -502,90 +581,7 @@ body.drawer-open #scrim {
 	display: contents;
 }
 
-/* thinking / waiting line — quiet, before the first chunk */
-.thinking {
-	color: var(--muted);
-	font-size: 13px;
-	padding: 2px 0 4px;
-}
-.thinking .dots {
-	display: inline-flex;
-	gap: 3px;
-	margin-left: 2px;
-}
-.thinking .dots i {
-	width: 4px;
-	height: 4px;
-	border-radius: 50%;
-	background: currentColor;
-	animation: dots 1.2s var(--ease) infinite;
-}
-.thinking .dots i:nth-child(2) {
-	animation-delay: 0.15s;
-}
-.thinking .dots i:nth-child(3) {
-	animation-delay: 0.3s;
-}
-@keyframes dots {
-	0%,
-	60%,
-	100% {
-		opacity: 0.25;
-	}
-	30% {
-		opacity: 1;
-	}
-}
-
-/* the working line: one quiet row while the model thinks or runs tools */
-.work {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	min-width: 0;
-}
-.work-icon {
-	display: inline-flex;
-	flex: none;
-	opacity: 0.75;
-}
-.work-icon svg {
-	width: 14px;
-	height: 14px;
-}
-.work-label {
-	flex: none;
-}
-.work-detail {
-	color: var(--faint);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-/* live work window: a fixed masked viewport; the working text glides
-   through it (the rAF loop translates .live-line). Collapses when the
-   turn settles — the reason row below carries the full text. */
-.live-window {
-	margin: 4px 0;
-	border-radius: 10px;
-	background: var(--surface);
-	mask-image: linear-gradient(180deg, transparent 0, #000 30%, #000 70%, transparent 100%);
-	-webkit-mask-image: linear-gradient(180deg, transparent 0, #000 30%, #000 70%, transparent 100%);
-	transition: height var(--dur-out) var(--ease);
-}
-
-.live-line {
-	margin: 0;
-	padding: 12px 14px 56px;
-	font-size: 13px;
-	line-height: 1.55;
-	color: var(--muted);
-	transform: translateY(0);
-	will-change: transform;
-}
-
-/* ===== tool rows: collapsed by default, a status dot is the state ===== */
+/* ===== tool rows: collapsed by default, a quiet state glyph trails ===== */
 .step {
 	margin: 4px 0;
 }
@@ -605,25 +601,58 @@ body.drawer-open #scrim {
 	display: none;
 }
 
-.tdot {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background: var(--faint);
+/* the row trails: hover duration, then the quiet state glyph */
+.step-dur {
+	font: 11px var(--sans);
+	color: var(--faint);
+	flex: none;
+	opacity: 0;
+	transition: opacity 150ms var(--ease);
+}
+.step > summary:hover .step-dur {
+	opacity: 1;
+}
+.step-state {
+	width: 15px;
+	height: 15px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	flex: none;
 	align-self: center;
+	color: var(--faint);
 }
-.tdot.ok {
-	background: var(--ok);
+.step-state svg {
+	width: 13px;
+	height: 13px;
 }
-.tdot.err {
-	background: var(--error);
-}
-.tdot.wait {
-	background: transparent;
+.step-spin {
+	width: 11px;
+	height: 11px;
 	border: 1.5px solid var(--surface-2);
 	border-top-color: var(--accent);
+	border-radius: 50%;
 	animation: spin 0.8s linear infinite;
+}
+
+/* quiet when done, loud only when it failed */
+.step.tool.error .step-name,
+.step.tool.error .step-text,
+.step.tool.error .step-icon,
+.step.tool.error .step-state {
+	color: var(--error);
+}
+
+/* the tool's glyph leads the row; the state glyph trails it */
+.step-icon {
+	display: inline-flex;
+	flex: none;
+	align-self: center;
+	color: var(--faint);
+}
+.step-icon svg {
+	width: 13px;
+	height: 13px;
 }
 
 @keyframes spin {
@@ -671,7 +700,7 @@ body.drawer-open #scrim {
 	background: var(--ok-bg);
 }
 
-.step.tool.failed .step-block.result {
+.step.tool.error .step-block.result {
 	color: var(--error);
 	background: var(--error-bg);
 }
@@ -909,8 +938,17 @@ body.drawer-open #scrim {
    the corner toggle opens the expanded, 27-line state. ChatGPT-like shape,
    our tokens. */
 #prompt-form {
-	position: relative;
+	/* floats: the transcript runs behind and below it, fading out at the end */
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	pointer-events: none;
 	padding: 0 max(24px, calc((100% - 880px) / 2)) 20px;
+}
+
+#prompt-form > .composer {
+	pointer-events: auto;
 }
 
 .composer {
@@ -920,10 +958,30 @@ body.drawer-open #scrim {
 	--prompt-line: 23px;
 	border: 1px solid var(--composer-border);
 	border-radius: 24px;
-	background: var(--bg);
+	/* tinted glass, same surface as the top bar */
+	background: var(--glass);
+	-webkit-backdrop-filter: var(--glass-blur);
+	backdrop-filter: var(--glass-blur);
 	padding: 9px 8px 9px 16px;
 	box-shadow: var(--shadow-composer);
 	transition: opacity var(--dur-out) var(--ease);
+}
+
+/* glass without the glass: an opaque surface keeps the bar and the pill legible */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	#session-bar,
+	.composer {
+		background: var(--bg);
+	}
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	#session-bar,
+	.composer {
+		background: var(--bg);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
 }
 
 .composer:has(#prompt:disabled) {
@@ -1077,31 +1135,46 @@ body.drawer-open #scrim {
 	flex: none;
 }
 
-/* ===== phones: same components, drawer instead of sidebar ===== */
-@media (max-width: 800px) {
+/* ===== narrow: the panel is a drawer that pushes the chat aside ===== */
+/* 650px = the panel's 250px + the width the chat needs to stay usable; keep
+   in sync with OVERLAY_QUERY in panel.ts. */
+@media (max-width: 650px) {
+	:root {
+		--drawer-w: 264px;
+	}
 	#sidebar {
 		position: fixed;
 		top: 0;
 		bottom: 0;
 		left: 0;
-		width: 264px;
+		width: var(--drawer-w);
 		z-index: 6;
 		transform: translateX(-100%);
-		transition: transform var(--dur-in) var(--ease);
+		/* hidden once the slide is over, so it leaves the tab order */
+		visibility: hidden;
+		transition: transform var(--dur-in) var(--ease), visibility 0s linear var(--dur-in);
 		border-right: 1px solid var(--border);
 	}
+	/* the panel never covers the chat: it pushes it right, off the edge */
 	body.drawer-open #sidebar {
 		transform: none;
+		visibility: visible;
+		transition: transform var(--dur-in) var(--ease);
 	}
-	#menu,
-	#sidebar-close {
-		display: inline-flex;
+	#main {
+		transition: transform var(--dur-in) var(--ease);
 	}
-	#sidebar-close {
-		margin-right: 2px;
+	body.drawer-open #main {
+		transform: translateX(var(--drawer-w));
 	}
+}
+
+/* ===== phones: same components, tighter chrome ===== */
+@media (max-width: 800px) {
 	#transcript {
-		padding: 16px 14px;
+		/* never hardcode the bottom: --composer-space is the floating pill's
+		   footprint, published by composer.ts as the pill grows */
+		padding: calc(var(--bar-h) + 16px) 14px var(--composer-space);
 	}
 	.message.user {
 		max-width: 88%;

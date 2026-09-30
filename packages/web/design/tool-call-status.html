@@ -1,0 +1,61 @@
+<h2 class="sr-only">Comparison of a green dot status indicator against a quiet check with a running spinner and an error state for tool call rows.</h2>
+<style>
+.pane{background:var(--surface-1);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.lbl{font-size:12px;color:var(--text-muted);margin:0 0 6px}
+.row{display:flex;align-items:center;gap:10px;padding:6px 6px;font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);border-radius:6px}
+.row:hover{background:var(--fill-ghost-hover)}
+.ic{font-size:16px;flex:none}
+.tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--fill-success);flex:none;margin:0 4px}
+.st{width:16px;height:16px;display:flex;align-items:center;justify-content:center;flex:none;font-size:14px;color:var(--text-muted)}
+.dur{font-size:11px;color:var(--text-muted);opacity:0;transition:opacity .15s;font-family:var(--font-sans)}
+.row:hover .dur{opacity:1}
+.new .st i{transition:opacity .25s;opacity:.7}
+.new [data-state=running] .st i{animation:sp 1s linear infinite;opacity:1}
+.new [data-state=error]{color:var(--text-danger)}
+.new [data-state=error] .st{color:var(--text-danger)}
+.new [data-state=error] .st i{opacity:1}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.new [data-state=running] .st i{animation:none}}
+.bar{display:flex;align-items:center;gap:10px}
+.bar span{font-size:12px;color:var(--text-muted)}
+</style>
+
+<div class="pane" id="old">
+  <p class="lbl">Current: dot on the far right</p>
+</div>
+
+<div class="pane new" id="new">
+  <p class="lbl">Proposed: quiet check, spinner while running, loud only on error. Hover a row for duration.</p>
+</div>
+
+<div class="bar"><button id="replay">Replay run ↗</button><span>Runs the proposed rows from running to done</span></div>
+
+<script>
+var rows=[
+ {i:'ti-terminal-2',t:'bash: cd ~/dev/project-eu/research/scholarships && sqlite3 scholarships.db ".tables"',d:'0.4s',s:'done'},
+ {i:'ti-terminal-2',t:'bash: sqlite3 -header -column scholarships.db "SELECT ..."',d:'0.6s',s:'done'},
+ {i:'ti-file-text',t:'read: /home/denis/dev/project-eu/research/shortlist.md',d:'12 lines',s:'done'},
+ {i:'ti-terminal-2',t:'bash: ls funding* 2>/dev/null; cat missing.txt',d:'exit 1',s:'error'}
+];
+var ico={running:'ti-loader-2',done:'ti-check',error:'ti-alert-triangle'};
+function mk(r,newStyle){
+ var d=document.createElement('div');d.className='row';
+ d.innerHTML='<i class="ti '+r.i+' ic" aria-hidden="true"></i><span class="tx"></span>'+(newStyle?'<span class="dur"></span><span class="st"><i class="ti"></i></span>':'<span class="dot"></span>');
+ d.querySelector('.tx').textContent=r.t;
+ if(newStyle){d.querySelector('.dur').textContent=r.d;set(d,r.s)}
+ return d;
+}
+function set(d,s){d.dataset.state=s;var i=d.querySelector('.st i');i.className='ti '+ico[s]}
+var oldEl=document.getElementById('old'),newEl=document.getElementById('new');
+rows.forEach(function(r){var o=mk(r,false);if(r.s==='error'){o.querySelector('.dot').style.background='var(--fill-success)'}oldEl.appendChild(o);newEl.appendChild(mk(r,true))});
+var timers=[];
+document.getElementById('replay').onclick=function(){
+ timers.forEach(clearTimeout);timers=[];
+ var els=newEl.querySelectorAll('.row');
+ els.forEach(function(e,k){
+  set(e,'running');
+  timers.push(setTimeout(function(){set(e,rows[k].s)},900+k*700));
+ });
+};
+</script>

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Browser client for the connector bridge",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@earendil-works/chord": "0.87.1",

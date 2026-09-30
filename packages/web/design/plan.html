@@ -18,6 +18,8 @@
   --surface-2: #ececee;
   --elevated: #ffffff;
   --bubble: #f0f0f2;
+  --glass: color-mix(in srgb, var(--bg) 76%, transparent);
+  --glass-blur: blur(16px) saturate(160%);
   --border: #e8e8eb;
   /* text (light) */
   --text: #1c1c1e;
@@ -341,7 +343,7 @@ section > .why { color: var(--muted); font-size: var(--t-13); margin: 0 0 20px; 
 /* ============================================================ 7. app mockup */
 .app-frame {
   border: 1px solid var(--border); border-radius: var(--r-panel); overflow: hidden;
-  display: grid; grid-template-columns: 240px 1fr; height: 620px; background: var(--bg);
+  display: grid; grid-template-columns: 240px 1fr; grid-template-rows: 1fr; height: 620px; background: var(--bg);
 }
 .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .sidebar .side-h { font-size: var(--t-11); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); padding: 0 8px 8px; display: flex; justify-content: space-between; align-items: center; }
@@ -351,7 +353,7 @@ section > .why { color: var(--muted); font-size: var(--t-13); margin: 0 0 20px; 
 .bot-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
 .bot-row:hover { background: var(--surface-2); }
 .bot-row.active { background: var(--accent-soft); }
-.blob { width: 28px; height: 28px; border-radius: 9px; flex: none; }
+.blob { width: 52px; height: 52px; border-radius: 16px; flex: none; }
 .blob.b1 { background: radial-gradient(circle at 38% 35%, #7f93c9, #293352 70%); }
 .blob.b2 { background: radial-gradient(circle at 60% 40%, #9fd6b8, #22885e 75%); }
 .blob.b3 { background: radial-gradient(circle at 50% 60%, #e8b98a, #b06e15 75%); }
@@ -361,15 +363,15 @@ section > .why { color: var(--muted); font-size: var(--t-13); margin: 0 0 20px; 
 .bot-state { font-size: var(--t-12); color: var(--faint); }
 .bot-state.busy { color: var(--accent); }
 
-.main-col { display: flex; flex-direction: column; min-width: 0; }
-.session-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); min-height: 52px; }
+.main-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+.session-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); min-height: 52px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
 .session-title { display: flex; align-items: center; gap: 8px; font-size: var(--t-13); font-weight: 600; }
-.session-title .blob { width: 24px; height: 24px; }
+.session-title .blob { width: 36px; height: 36px; }
 .session-title .sid { color: var(--faint); font-weight: 500; }
 .session-bar .status-pill { margin-left: auto; }
 .session-actions { display: flex; gap: 6px; }
 
-.transcript { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 20px max(20px, calc((100% - 720px) / 2)); display: flex; flex-direction: column; align-items: stretch; }
+.transcript { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: calc(52px + 20px) max(20px, calc((100% - 720px) / 2)); display: flex; flex-direction: column; align-items: stretch; }
 .msg { margin-bottom: 10px; font-size: var(--t-15); line-height: 1.55; overflow-wrap: anywhere; }
 .msg.user { align-self: flex-end; max-width: 78%; }
 .msg.user .bubble { background: var(--bubble); border-radius: var(--r-bubble); padding: 9px 13px; white-space: pre-wrap; }
@@ -483,7 +485,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--border
   .app-frame { grid-template-columns: 1fr; height: auto; }
   .sidebar { border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; overflow-x: auto; }
   .sidebar .side-h { display: none; }
-  .transcript { padding: 16px 14px; }
+  .transcript { padding: calc(52px + 16px) 14px; }
   .composer { padding: 10px 14px 14px; }
   .msg.user { max-width: 88%; }
 }
