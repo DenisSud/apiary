@@ -1,6 +1,9 @@
 node_modules/
 *.log
-.pi/
+
+# pi project dir: skills are shared, local config is not
+.pi/*
+!.pi/skills/
 
 # Devenv
 .devenv*
