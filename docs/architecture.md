@@ -49,9 +49,10 @@ files are symlinks, not copies.
    the pi checkout (`$PI_SOURCE_DIR`) if needed, and a session is attached
    over a unix socket.
 4. **Config commits** — a commit touching `SOUL.md`, `BEHAVIOR.md`,
-   `settings.json`, `skills/` or `extensions/` writes `.apply`; the bridge
-   stops the server when it is idle, the reconciler runs, the next attach
-   starts a fresh server. Notes-only commits never apply.
+   `settings.json`, `skills/` or `extensions/` writes `.apply`; a bot with no
+   attached client is stopped by the bridge watcher and reconciled on its
+   next attach; an attached web client applies the marker itself once the
+   turn settles (reload + re-attach). Notes-only commits never apply.
 5. **Archive / delete** — archive stops the server and writes a gitignored
    `.archived` marker; attach refuses archived agents until unarchive. Delete
    removes the directory after `{ confirm: name }`.
