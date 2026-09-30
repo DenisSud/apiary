@@ -67,7 +67,7 @@ const composer = createComposer(
 const botRows = createBotList(botList, (name) => void openBot(name, false));
 const panel = createPanel({ menu: menuButton, close: sidebarCloseButton, scrim });
 const onboarding = createOnboarding(onboardingRoot, {
-	onCreate: (input) => startBot(input.name, input.task),
+	onCreate: (input) => startBot(input.name),
 	onCancel: () => hideOnboarding(),
 });
 
@@ -225,8 +225,8 @@ function restoreQueued(): void {
 
 /* ---------- sessions ---------- */
 
-/** Create the bot, open its first session and send the self-config kickoff. */
-async function startBot(name: string, task: string): Promise<void> {
+/** Create the bot, open its first session and send the setup kickoff. */
+async function startBot(name: string): Promise<void> {
 	await createBot(name);
 	// hold the empty state back until the new session is up
 	connecting = true;
@@ -237,7 +237,7 @@ async function startBot(name: string, task: string): Promise<void> {
 	} finally {
 		connecting = false;
 	}
-	sendPrompt(kickoffPrompt(task));
+	sendPrompt(kickoffPrompt());
 }
 
 async function openBot(bot: string, fresh: boolean): Promise<void> {

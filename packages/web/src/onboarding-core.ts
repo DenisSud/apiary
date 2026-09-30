@@ -11,13 +11,12 @@ export function isValidNewBotName(name: string): boolean {
 }
 
 /**
- * The first message a new bot gets. "Set me up." is the trigger phrase of the
- * self-config skill; the task, when given, saves the first interview question.
+ * The first message a new bot gets. The `/skill:` command makes the service
+ * expand the self-config skill; the rest is the service's first-setup prompt,
+ * written to open the interview directly.
  */
-export function kickoffPrompt(task: string): string {
-	const trimmed = task.trim();
-	if (trimmed === "") return "/skill:self-config Set me up.";
-	return `/skill:self-config Set me up.\n\nWhat I want from you: ${trimmed}`;
+export function kickoffPrompt(): string {
+	return "/skill:self-config Set me up — start the interview now: first question, one at a time, each with your recommendation.";
 }
 
 /** Configured providers first, then by name. */

@@ -17,7 +17,6 @@ import { isValidNewBotName, providerMethods, providerStatus, sortProviders } fro
 
 export interface OnboardingInput {
 	name: string;
-	task: string;
 }
 
 export interface OnboardingCallbacks {
@@ -142,16 +141,6 @@ export function createOnboarding(root: HTMLElement, callbacks: OnboardingCallbac
 	const nameField = el("label", "field");
 	nameField.append(nameLabel, nameRow, nameHint);
 
-	const taskLabel = el("span", "field-label");
-	taskLabel.append("What will this bot work on? ", el("span", "field-optional", "optional"));
-	const taskInput = document.createElement("textarea");
-	taskInput.id = "bot-task";
-	taskInput.className = "task-input";
-	taskInput.rows = 3;
-	taskInput.placeholder = "e.g. homelab upkeep and note keeping";
-	const taskField = el("label", "field");
-	taskField.append(taskLabel, taskInput);
-
 	const formError = el("p", "form-error");
 	formError.hidden = true;
 
@@ -164,7 +153,7 @@ export function createOnboarding(root: HTMLElement, callbacks: OnboardingCallbac
 	actions.append(createButton, cancelButton);
 
 	const botBody = el("div", "step-body");
-	botBody.append(nameField, taskField, formError, actions);
+	botBody.append(nameField, formError, actions);
 	const botStep = el("li", "step");
 	botStep.hidden = true;
 	botStep.append(botHead, botBody);
@@ -501,17 +490,15 @@ export function createOnboarding(root: HTMLElement, callbacks: OnboardingCallbac
 		creating = true;
 		formError.hidden = true;
 		nameInput.disabled = true;
-		taskInput.disabled = true;
 		updateCreate();
 		try {
-			await callbacks.onCreate({ name, task: taskInput.value });
+			await callbacks.onCreate({ name });
 		} catch (error) {
 			formError.textContent = message(error);
 			formError.hidden = false;
 		} finally {
 			creating = false;
 			nameInput.disabled = false;
-			taskInput.disabled = false;
 			updateCreate();
 		}
 	}
@@ -542,7 +529,6 @@ export function createOnboarding(root: HTMLElement, callbacks: OnboardingCallbac
 		providers = undefined;
 		filter.value = "";
 		nameInput.value = "";
-		taskInput.value = "";
 		formError.hidden = true;
 		stopBlob?.();
 		stopBlob = undefined;

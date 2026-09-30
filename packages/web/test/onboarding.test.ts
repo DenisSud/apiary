@@ -18,12 +18,10 @@ test("isValidNewBotName mirrors the pi-manager create rule", () => {
 	assert.equal(isValidNewBotName("atlas."), false);
 });
 
-test("kickoffPrompt carries the self-config trigger and the task", () => {
-	assert.equal(kickoffPrompt(""), "/skill:self-config Set me up.");
-	assert.equal(kickoffPrompt("   "), "/skill:self-config Set me up.");
+test("kickoffPrompt sends the setup prompt through the self-config skill", () => {
 	assert.equal(
-		kickoffPrompt("  homelab upkeep\n"),
-		"/skill:self-config Set me up.\n\nWhat I want from you: homelab upkeep",
+		kickoffPrompt(),
+		"/skill:self-config Set me up — start the interview now: first question, one at a time, each with your recommendation.",
 	);
 });
 
