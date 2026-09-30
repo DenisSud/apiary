@@ -314,10 +314,6 @@ body.panel-hidden #sidebar {
 #session-title .title-name {
 	white-space: nowrap;
 }
-#session-title .title-id {
-	color: var(--faint);
-	font-weight: 500;
-}
 
 /* the one live blobatar follows the pointer */
 .title-blob .mo-eyes {
@@ -1668,9 +1664,6 @@ body.no-session #transcript {
 	#session-actions button svg {
 		width: 16px;
 		height: 16px;
-	}
-	#session-title .title-id {
-		display: none;
 	}
 }
 

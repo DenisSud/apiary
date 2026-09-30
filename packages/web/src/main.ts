@@ -90,10 +90,7 @@ function setSessionTitle(bot?: string, sessionId?: string): void {
 	const name = document.createElement("span");
 	name.className = "title-name";
 	name.textContent = bot;
-	const id = document.createElement("span");
-	id.className = "title-id";
-	id.textContent = sessionId.slice(0, 8);
-	sessionTitle.append(blob.element, name, id);
+	sessionTitle.append(blob.element, name);
 }
 
 function setStatus(text: string, kind: "idle" | "busy" | "error" = "idle"): void {
