@@ -1,5 +1,7 @@
 /**
- * ptc registry — the only file other extensions import.
+ * ptc registry — the store the `ptc` tool reads and other extensions register
+ * into. Base extensions use the mirrored copy in `base/lib/ptc.ts`; the two
+ * copies share one store via the symbol below, so keep them in sync.
  *
  * `registerPtcTool(name, run, opts?)` opts a tool into programmatic calling:
  * the `ptc` tool exposes it to generated programs as a global async function

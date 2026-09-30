@@ -11,7 +11,7 @@ program's printed output reaches the model.
 ## Why the local version is simpler
 
 Anthropic/OpenAI need sandboxed containers because they execute untrusted code
-at scale. pi on Denis's machine already runs arbitrary bash as the user, so we
+at scale. pi already runs arbitrary bash as the user, so we
 use Anthropic's "client-side direct execution" alternative: run the generated
 program locally, no sandbox, no container lifecycle, no pause/resume protocol.
 Same trust level as the bash tool.

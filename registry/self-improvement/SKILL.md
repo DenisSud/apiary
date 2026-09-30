@@ -29,7 +29,7 @@ fires.
 
 A skill that has run routinely — about three times, or on a natural cadence —
 is a candidate for firing without a person. Write the spec to
-`<bot>/automations/<name>.md`, then ask Denis before it runs anywhere.
+`<bot>/automations/<name>.md`, then ask the user before it runs anywhere.
 
 ```markdown
 ---
@@ -44,15 +44,14 @@ The prompt to run, or the steps the bot takes.
 
 Hard limits:
 
-- Never install external packages, skills or extensions — Denis decides those.
+- Never install external packages, skills or extensions — the user decides those.
 - Never automate credential handling, irreversible actions, or anything
   outward-facing (mail, other people's calendars, money) without explicit
   approval.
 - Never automate work whose benefit is in the doing — the cognitive-benefit
-  boundary in `~/Bots/docs/productivity.md`. Brain dumps, priority calls and
-  learning stay Denis's.
+  boundary. Brain dumps, priority calls and learning stay the user's.
 - Every automation is idempotent, owned by one bot, and off by default
   (`enabled: false`) until approved.
 
-Done when the spec is committed and Denis has approved, or the spec is
+Done when the spec is committed and the user has approved, or the spec is
 disabled and waiting.

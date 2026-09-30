@@ -22,7 +22,7 @@
  * JS-rendered pages start to matter; do not start with screenshots.
  *
  * ptc: `web_search` and `web_fetch` are registered for programmatic calling
- * (extensions/ptc). Each fetch returns up to 120k chars, so a program fanning
+ * (registry/ptc). Each fetch returns up to 120k chars, so a program fanning
  * out over many URLs must slice inside the program — the whole point of ptc.
  */
 
