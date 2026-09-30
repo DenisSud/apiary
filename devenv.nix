@@ -25,15 +25,15 @@ in
   # Deliberately NOT languages.javascript: it prepends node_modules/.bin to
   # PATH, where bun's auto-installed peer @earendil-works/pi-coding-agent
   # shadows the system `pi`. That npm bundle has no monorepo store layout, so
-  # extensions/*/test/run.sh can no longer resolve the pi store. Plain
+  # base/extensions/*/test/run.sh can no longer resolve the pi store. Plain
   # packages keep the installed pi authoritative; the install task below
   # still keeps node_modules in sync with bun.lock.
   packages = [
     pkgs.nodejs_24 # >= 23.6: native TS type stripping
     pkgs.bun
     pkgs.git # commit/push from the shell
-    pkgs.jq # install.sh and pi-bot-new refuse to run without it
-    pkgs.fish # `lint` syntax-checks fish/pi.fish
+    pkgs.jq # bridge smoke tests, doctor
+    pkgs.fish # `lint` syntax-checks packages/connector/fish/pi.fish
     pkgs.curl # bridge smoke tests, doctor's SearXNG probe
     pkgs.shellcheck # `lint`
     pkgs.watchexec # `web-watch`
@@ -58,7 +58,7 @@ in
   # `devenv info` lists these; the shell puts them on PATH.
   scripts = {
     check = {
-      description = "All tests: connector suite + every extension harness";
+      description = "All tests: package suites + every extension harness";
       exec = ''
         set -euo pipefail
         cd "$DEVENV_ROOT"
@@ -76,12 +76,17 @@ in
         runners=()
         if [ "$#" -gt 0 ]; then
           for name in "$@"; do
-            runners+=("extensions/$name/test/run.sh")
+            if [ -d "base/extensions/$name" ]; then
+              runners+=("base/extensions/$name/test/run.sh")
+            else
+              runners+=("registry/$name/test/run.sh")
+            fi
           done
         else
-          runners=(extensions/*/test/run.sh)
+          runners=(base/extensions/*/test/run.sh registry/*/test/run.sh)
         fi
         for runner in "''${runners[@]}"; do
+          [ -x "$runner" ] || continue
           echo "== $runner =="
           "$runner" harness
         done
@@ -100,7 +105,7 @@ in
       description = "web-search live test (needs the local SearXNG service)";
       exec = ''
         cd "$DEVENV_ROOT"
-        exec extensions/web-search/test/run.sh live
+        exec registry/web-search/test/run.sh live
       '';
     };
 
@@ -116,7 +121,7 @@ in
       description = "Serve the built web app + bridge on 127.0.0.1:8787";
       exec = ''
         cd "$DEVENV_ROOT"
-        exec bin/pi-bots-web "$@"
+        exec packages/connector/bin/pi-bots-web "$@"
       '';
     };
 
@@ -132,7 +137,7 @@ in
       description = "This checkout's pi-bot (local connector source)";
       exec = ''
         cd "$DEVENV_ROOT"
-        exec bin/pi-bot "$@"
+        exec packages/connector/bin/pi-bot "$@"
       '';
     };
 
@@ -141,18 +146,10 @@ in
       exec = ''
         cd "$DEVENV_ROOT"
         shellcheck -S warning \
-          bin/pi-bot bin/pi-bot-new bin/pi-bots-web install.sh \
-          extensions/*/test/run.sh
-        fish -n fish/pi.fish
+          packages/connector/bin/pi-bot packages/connector/bin/pi-bots-web \
+          base/extensions/*/test/run.sh registry/*/test/run.sh
+        fish -n packages/connector/fish/pi.fish
         echo "lint clean"
-      '';
-    };
-
-    install-base = {
-      description = "Run ./install.sh: settings merge, pi install, tool links";
-      exec = ''
-        cd "$DEVENV_ROOT"
-        exec ./install.sh "$@"
       '';
     };
 
@@ -169,7 +166,7 @@ in
           pi_version="$("$pi_bin" --version 2>/dev/null | head -n1)"
           echo "pi         $pi_version  ($pi_bin)"
         else
-          echo "pi         MISSING — extensions/*/test/run.sh resolves the pi store from it"
+          echo "pi         MISSING — base/extensions/*/test/run.sh resolves the pi store from it"
         fi
 
         src="''${PI_SOURCE_DIR:-$HOME/dev/pi}"
@@ -201,7 +198,7 @@ in
   processes.web.exec = ''
     cd ${config.devenv.root}
     bun run build
-    exec bin/pi-bots-web
+    exec packages/connector/bin/pi-bots-web
   '';
 
   enterShell = ''
@@ -214,7 +211,7 @@ in
     set -euo pipefail
     cd "$DEVENV_ROOT"
     bun run test
-    for runner in extensions/*/test/run.sh; do
+    for runner in base/extensions/*/test/run.sh; do
       echo "== $runner =="
       "$runner" harness
     done

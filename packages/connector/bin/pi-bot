@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# pi-bot — attach to and manage Denis's bots.
+# pi-bot — attach to and manage this deployment's bots.
 #
 #   pi-bot attach <bot> [--new]   attach (starts the bot's server if needed)
 #   pi-bot resolve <bot>          ensure the server, resolve the session
@@ -7,11 +7,11 @@
 #   pi-bot new <name>             scaffold a new bot
 #   pi-bot <bot> [--new]          same as attach
 #
-# A bot is a complete pi agent dir at $PI_BOTS_HOME/<name> (default ~/Bots).
-# It runs as a pi server; this script only boots the TypeScript CLI in
-# packages/connector. See packages/connector/README.md for the launcher spec.
+# A bot is a complete pi agent dir at $PI_BOTS_HOME/<name>. It runs as a pi
+# server; this script only boots the TypeScript CLI in packages/connector.
+# See packages/connector/README.md for the launcher spec.
 set -eu
 
 self="$(readlink -f "$0")"
-root="$(dirname "$(dirname "$self")")"
+root="$(cd "$(dirname "$self")/../../.." && pwd)"
 exec node "$root/packages/connector/src/bin.ts" "$@"
