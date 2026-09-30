@@ -27,9 +27,12 @@ to the built copies this repo depends on. It also copies `index.html`,
 
 | file | responsibility |
 |---|---|
-| `main.ts` | composition root: DOM handles, app state (open session, bot list, busy flag), event wiring, the session actions |
-| `types.ts` | the snapshot vocabulary (`BotSummary`, `Entry`, `Operation`, `TranscriptSnapshot`, `QueuedItem`) and pure readers over it (`textOf`, `blockText`, `messageBlocks`, `queuedMessages`) |
-| `session.ts` | one session over the bridge: WebSocket → `ByteTransport` → `Client`, activation, create-if-unknown + attach, snapshot subscription, and `prompt`/`steer`/`abort`/`compact` |
+| `main.ts` | composition root: DOM handles, app state (open session, bot list, busy flag), event wiring, the session actions, the onboarding/empty-state swap, the setup watcher |
+| `types.ts` | the snapshot vocabulary (`BotSummary`, `BotDetail`, `Entry`, `Operation`, `TranscriptSnapshot`, `QueuedItem`) and pure readers over it (`textOf`, `blockText`, `messageBlocks`, `queuedMessages`) |
+| `session.ts` | one session over the bridge: WebSocket → `ByteTransport` → `Client`, activation, create-if-unknown + attach, snapshot subscription, `prompt`/`steer`/`abort`/`compact`, and the management calls (`listBots`, `createBot`, `reloadBot`) |
+| `onboarding.ts` | the first-run / new-bot view: provider login (both methods), name + task, create |
+| `onboarding-core.ts` | the onboarding's pure core: name rule, kickoff message, provider order/methods/status |
+| `auth.ts` | the provider-login client: `GET /api/auth/providers`, start a login, the frame protocol over one WebSocket |
 | `transcript.ts` | the transcript view: grouping into turns, the live working block, tool rows, notes, append-only rendering |
 | `tools.ts` | tool rows: icon + one-line call, state glyph, duration, result block, call/result pairing |
 | `stream.ts` | the streaming answer: settled prefix as markdown, the tail revealed in chunks |
@@ -42,6 +45,7 @@ to the built copies this repo depends on. It also copies `index.html`,
 | `index.html` | the static shell (all element ids `main.ts` looks up) |
 | `style.css` | tokens, both themes, the components, motion |
 | `test/core.test.ts` | the pure core: grouping, readers, formatters, the pin decision |
+| `test/onboarding.test.ts` | the onboarding core: name rule, kickoff, provider ordering and lines |
 
 ## Data flow
 
@@ -62,6 +66,20 @@ knows the wire exists. The snapshot is the source of truth for the busy state:
 
 Actions go back through `AgentController`: `prompt` when idle, `steer` while a
 turn runs, `requestAbort(operation.id)` for stop, `compact` while idle.
+
+## Onboarding
+
+First run (no bots in `PI_BOTS_HOME`) swaps the main area for the onboarding
+view: provider login over the bridge auth proxy, then name + task, then
+create. It opens again from the sidebar `+` and the no-session empty state.
+On create, `main.ts` opens a fresh session and sends the kickoff
+(`onboarding-core.ts` composes `/skill:self-config Set me up.` plus the task).
+
+While the active bot is in setup (or has an apply pending) `main.ts` polls
+`GET /api/bots` every 3 s and shows a chip on the session bar. The bridge's
+apply watcher skips bots with an attached client, so once `setup` flips and
+the turn settles the client applies the marker itself: `POST reload`, then
+re-attach the same session (`maybeApply`).
 
 ## Rendering rules
 

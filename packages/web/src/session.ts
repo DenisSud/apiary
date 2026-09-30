@@ -5,7 +5,7 @@ import {
 	type ActivatedClientRuntimeServer,
 } from "@pi/fork/experimental/services/activation.ts";
 import { createServerServiceSource, createSessionServiceSource } from "@pi/fork/experimental/services/connection.ts";
-import type { BotSummary, Operation, TranscriptSnapshot } from "./types.ts";
+import type { BotDetail, BotSummary, Operation, TranscriptSnapshot } from "./types.ts";
 
 // One session over the connector bridge: one WebSocket carries the session's
 // byte stream to the bot's pi server, and everything above it uses the same
@@ -33,8 +33,36 @@ export interface Session {
 
 export async function listBots(): Promise<BotSummary[]> {
 	const response = await fetch("/api/bots");
-	if (!response.ok) throw new Error(`/api/bots: ${response.status}`);
+	if (!response.ok) throw new Error(await errorText(response));
 	return ((await response.json()) as { bots: BotSummary[] }).bots;
+}
+
+/** Create a bot; the caller opens a session and sends the kickoff. */
+export async function createBot(name: string): Promise<BotDetail> {
+	const response = await fetch("/api/bots", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ name }),
+	});
+	if (!response.ok) throw new Error(await errorText(response));
+	return ((await response.json()) as { bot: BotDetail }).bot;
+}
+
+/** Stop and reconcile now: applies a pending post-commit marker mid-session. */
+export async function reloadBot(name: string): Promise<void> {
+	const response = await fetch(`/api/bots/${encodeURIComponent(name)}/reload`, { method: "POST" });
+	if (!response.ok) throw new Error(await errorText(response));
+}
+
+/** The bridge's `{error}` body when it has one, the status line otherwise. */
+async function errorText(response: Response): Promise<string> {
+	try {
+		const body = (await response.json()) as { error?: unknown };
+		if (typeof body.error === "string") return body.error;
+	} catch {
+		// not a JSON body
+	}
+	return `${response.status} ${response.statusText}`;
 }
 
 export async function openSession(
@@ -100,7 +128,8 @@ export async function openSession(
 	};
 }
 
-function bridgeUrl(path: string): string {
+/** The same host, the matching ws scheme. */
+export function bridgeUrl(path: string): string {
 	const scheme = location.protocol === "https:" ? "wss" : "ws";
 	return `${scheme}://${location.host}${path}`;
 }

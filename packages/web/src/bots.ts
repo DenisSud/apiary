@@ -27,8 +27,20 @@ export function createBotList(root: HTMLUListElement, onOpen: (name: string) => 
 			name.textContent = bot.name;
 
 			const state = document.createElement("span");
-			state.className = runningTurn ? "bot-state busy" : bot.running ? "bot-state running" : "bot-state";
-			state.textContent = runningTurn ? "running a turn" : bot.running ? "server running" : "idle";
+			state.className = runningTurn
+				? "bot-state busy"
+				: bot.setup
+					? "bot-state setup"
+					: bot.running
+						? "bot-state running"
+						: "bot-state";
+			state.textContent = runningTurn
+				? "running a turn"
+				: bot.setup
+					? "setting up"
+					: bot.running
+						? "server running"
+						: "idle";
 
 			meta.append(name, state);
 

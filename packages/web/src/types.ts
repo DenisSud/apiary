@@ -5,11 +5,27 @@
 export interface BotSummary {
 	name: string;
 	dir: string;
+	archived: boolean;
+	/** True while the agent still has to finish its `init` commit. */
+	setup: boolean;
+	/** True while a post-commit apply marker waits for a reload. */
+	apply: boolean;
 	running: boolean;
 	serverId: string | null;
 	pid: number | null;
 	startedAt: string | null;
 	lastSession: { sessionId: string; updatedAt: string } | null;
+}
+
+/** The management view of one bot: what create and detail return. */
+export interface BotDetail {
+	name: string;
+	dir: string;
+	archived: boolean;
+	setup: boolean;
+	packages: string[];
+	model: { provider: string; id: string };
+	thinking?: string;
 }
 
 export interface TextBlock {

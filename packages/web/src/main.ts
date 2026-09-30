@@ -1,9 +1,11 @@
 import { blobatarSvg } from "./blob.ts";
 import { createBotList } from "./bots.ts";
 import { createComposer } from "./composer.ts";
+import { createOnboarding } from "./onboarding.ts";
+import { kickoffPrompt } from "./onboarding-core.ts";
 import { createPanel } from "./panel.ts";
 import { createFollower } from "./scroll.ts";
-import { type Session, listBots, openSession } from "./session.ts";
+import { type Session, createBot, listBots, openSession, reloadBot } from "./session.ts";
 import { createTranscript } from "./transcript.ts";
 import { type BotSummary, type TranscriptSnapshot, queuedMessages, textOf } from "./types.ts";
 
@@ -29,12 +31,23 @@ const latestSpinner = document.querySelector<HTMLElement>("#latest-spin");
 const menuButton = mustFind<HTMLButtonElement>("#menu");
 const sidebarCloseButton = mustFind<HTMLButtonElement>("#sidebar-close");
 const scrim = mustFind<HTMLElement>("#scrim");
+const newBotButton = mustFind<HTMLButtonElement>("#new-bot");
+const emptyState = mustFind<HTMLElement>("#chat-empty");
+const emptyNewButton = mustFind<HTMLButtonElement>("#empty-new-bot");
+const setupChip = mustFind<HTMLSpanElement>("#session-setup");
+const onboardingRoot = mustFind<HTMLElement>("#onboarding");
 
 let active: Session | undefined;
 let bots: BotSummary[] = [];
 // True while the open session has a running turn; drives the sidebar marker
 // and the jump pill's spinner.
 let laneBusy = false;
+// True while openSession resolves: keeps the empty state from flashing.
+let connecting = false;
+// A pending post-commit apply: polled while one waits, applied when idle.
+let setupTimer: number | undefined;
+let applying = false;
+let applyFailed = false;
 
 function mustFind<T extends Element>(selector: string): T {
 	const element = document.querySelector<T>(selector);
@@ -53,6 +66,10 @@ const composer = createComposer(
 );
 const botRows = createBotList(botList, (name) => void openBot(name, false));
 const panel = createPanel({ menu: menuButton, close: sidebarCloseButton, scrim });
+const onboarding = createOnboarding(onboardingRoot, {
+	onCreate: (input) => startBot(input.name, input.task),
+	onCancel: () => hideOnboarding(),
+});
 
 /* ---------- header, status, pill ---------- */
 
@@ -101,6 +118,78 @@ async function refreshBots(): Promise<void> {
 		return;
 	}
 	botRows.render(bots, active?.bot, laneBusy);
+	updateChrome();
+	watchSetup();
+	void maybeApply();
+	if (bots.length === 0 && !onboarding.visible()) showOnboarding("first-run");
+}
+
+/* ---------- onboarding, empty state, setup chip ---------- */
+
+function showOnboarding(mode: "first-run" | "create"): void {
+	// the class first: the view focuses its name field, and a hidden one cannot
+	document.body.classList.add("onboarding");
+	onboarding.show(mode);
+	updateChrome();
+}
+
+function hideOnboarding(): void {
+	onboarding.hide();
+	document.body.classList.remove("onboarding");
+	updateChrome();
+}
+
+/** The main-area swap: the empty state, and the setup chip on the bar. */
+function updateChrome(): void {
+	const empty = active === undefined && !connecting && !onboarding.visible() && bots.length > 0;
+	emptyState.hidden = !empty;
+	document.body.classList.toggle("no-session", empty);
+	updateSetupChip();
+}
+
+function updateSetupChip(): void {
+	const summary = bots.find((candidate) => candidate.name === active?.bot);
+	const pending = summary !== undefined && (summary.setup || summary.apply);
+	setupChip.hidden = !pending;
+	if (pending && summary !== undefined) setupChip.textContent = summary.setup ? "setting up" : "applying changes";
+}
+
+/** Poll while the active bot is in setup or has an apply waiting. */
+function watchSetup(): void {
+	const summary = bots.find((candidate) => candidate.name === active?.bot);
+	const pending = summary !== undefined && (summary.setup || summary.apply);
+	if (pending && setupTimer === undefined) {
+		setupTimer = window.setInterval(() => void refreshBots(), 3000);
+	} else if (!pending && setupTimer !== undefined) {
+		window.clearInterval(setupTimer);
+		setupTimer = undefined;
+	}
+}
+
+/**
+ * The apply watcher never touches a bot with an attached client, so once a
+ * post-commit marker lands and the turn settles, reload and re-attach here.
+ */
+async function maybeApply(): Promise<void> {
+	const session = active;
+	if (session === undefined || applying) return;
+	const summary = bots.find((candidate) => candidate.name === session.bot);
+	if (summary === undefined || summary.setup || !summary.apply) {
+		applyFailed = false;
+		return;
+	}
+	if (applyFailed || session.operation() !== undefined) return;
+	applying = true;
+	try {
+		await reloadBot(session.bot);
+		await openBot(session.bot, false);
+		await refreshBots();
+	} catch (error) {
+		applyFailed = true;
+		setStatus(message(error), "error");
+	} finally {
+		applying = false;
+	}
 }
 
 function updateActions(): void {
@@ -136,9 +225,26 @@ function restoreQueued(): void {
 
 /* ---------- sessions ---------- */
 
+/** Create the bot, open its first session and send the self-config kickoff. */
+async function startBot(name: string, task: string): Promise<void> {
+	await createBot(name);
+	// hold the empty state back until the new session is up
+	connecting = true;
+	hideOnboarding();
+	try {
+		await refreshBots();
+		await openBot(name, true);
+	} finally {
+		connecting = false;
+	}
+	sendPrompt(kickoffPrompt(task));
+}
+
 async function openBot(bot: string, fresh: boolean): Promise<void> {
 	await closeSession();
+	connecting = true;
 	setStatus("connecting", "busy");
+	updateChrome();
 	try {
 		const summary = bots.find((candidate) => candidate.name === bot);
 		if (summary === undefined) throw new Error(`unknown bot ${bot}`);
@@ -158,7 +264,10 @@ async function openBot(bot: string, fresh: boolean): Promise<void> {
 		void refreshBots();
 	} catch (error) {
 		setStatus(message(error), "error");
+	} finally {
+		connecting = false;
 	}
+	updateChrome();
 }
 
 async function closeSession(): Promise<void> {
@@ -185,6 +294,7 @@ function renderSnapshot(snapshot: TranscriptSnapshot | undefined): void {
 	if (sessionStatus.className !== "error") setStatus(running ? "running" : "ready", running ? "busy" : "idle");
 	updateComposer();
 	updateActions();
+	void maybeApply();
 }
 
 /* ---------- actions ---------- */
@@ -253,6 +363,8 @@ newButton.addEventListener("click", () => {
 
 latestButton.addEventListener("click", () => follower.jump(true));
 refreshButton.addEventListener("click", () => void refreshBots());
+newBotButton.addEventListener("click", () => showOnboarding("create"));
+emptyNewButton.addEventListener("click", () => showOnboarding("create"));
 window.addEventListener("focus", () => void refreshBots());
 
 function message(error: unknown): string {
