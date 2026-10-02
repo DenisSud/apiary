@@ -187,11 +187,13 @@ test("capture: invalid values throw", () => {
 });
 
 test("capture: gate answer parsing", () => {
-	assertEqual(parseGateAnswer('{"remember": true}'), true);
-	assertEqual(parseGateAnswer('{"remember": false}'), false);
-	assertEqual(parseGateAnswer("true"), true);
-	assertEqual(parseGateAnswer("The answer is false."), false);
-	assertEqual(parseGateAnswer("hmm"), undefined);
+	assertEqual(parseGateAnswer({ answers: { remember: { noul: 0.97 } } }), true);
+	assertEqual(parseGateAnswer({ answers: { remember: { noul: 0.5 } } }), true);
+	assertEqual(parseGateAnswer({ answers: { remember: { noul: 0.49 } } }), false);
+	assertEqual(parseGateAnswer({ answers: { remember: { noul: 0.02 } } }), false);
+	assertEqual(parseGateAnswer({ answers: {} }), undefined);
+	assertEqual(parseGateAnswer({ answers: { remember: { noul: "0.9" } } }), undefined);
+	assertEqual(parseGateAnswer({}), undefined);
 });
 
 // ── capture pipeline ──────────────────────────────────────────────────────
@@ -237,8 +239,12 @@ test("capture: cap forces a flush", async () => {
 
 test("capture: gate false drops the batch", async () => {
 	const gate = await startServer((record, res) => {
+		assertEqual(record.url, "/v1/systemone");
+		assertEqual(record.body.model, "tev1:4b");
+		assert(record.body.state.includes("User: ok"), record.body.state);
+		assert(record.body.questions.remember.type, "noul question expected");
 		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ choices: [{ message: { content: '{"remember": false}' } }] }));
+		res.end(JSON.stringify({ answers: { remember: { noul: 0.05 } } }));
 		return true;
 	});
 	try {
@@ -272,7 +278,7 @@ test("capture: gate failure fails open (captures)", async () => {
 test("capture: gate true captures", async () => {
 	const gate = await startServer((record, res) => {
 		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ choices: [{ message: { content: '{"remember": true}' } }] }));
+		res.end(JSON.stringify({ answers: { remember: { noul: 0.97 } } }));
 		return true;
 	});
 	try {

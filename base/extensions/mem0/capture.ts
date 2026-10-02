@@ -56,14 +56,21 @@ const DEFAULTS = {
   gate: { model: 'tev1:4b', timeoutMs: 5_000 },
 } as const;
 
-const GATE_PROMPT =
-  'You are a memory gate for a long-term memory system. Given a conversation ' +
-  'excerpt, decide whether it contains durable information worth remembering: ' +
-  'facts about the user, their preferences, environment, projects, decisions, ' +
-  'corrections, or lasting context. Routine task chatter, tool status, ' +
-  'greetings, acknowledgments, and ephemeral details are NOT worth ' +
-  'remembering. Answer with a single JSON object: {"remember": true} or ' +
-  '{"remember": false}. No other text.';
+const GATE_DECISION_THRESHOLD = 0.5;
+
+/** The gate as one noul decision over the batch excerpt. */
+const GATE_QUESTION = {
+  type: 'noul',
+  instructions:
+    'Does this conversation excerpt contain durable information worth remembering: ' +
+    'facts about the user, their preferences, environment, projects, decisions, ' +
+    'corrections, or lasting context? Routine task chatter, tool status, ' +
+    'greetings, acknowledgments, and ephemeral details are NOT durable.',
+  criteria: {
+    true: 'The excerpt contains durable information worth remembering.',
+    false: 'The excerpt contains only routine or ephemeral content.',
+  },
+} as const;
 
 function positiveInt(value: number | undefined, fallback: number, name: string): number {
   const resolved = value ?? fallback;
@@ -93,13 +100,11 @@ export function resolveCaptureConfig(input: CaptureConfigInput | undefined): Cap
   };
 }
 
-/** Parse the gate's answer. `undefined` means the output was not parseable. */
-export function parseGateAnswer(text: string): boolean | undefined {
-  const json = text.match(/"remember"\s*:\s*(true|false)/i);
-  if (json) return json[1]!.toLowerCase() === 'true';
-  const bare = text.match(/\b(true|false)\b/i);
-  if (bare) return bare[1]!.toLowerCase() === 'true';
-  return undefined;
+/** Parse the gate's systemone answer. `undefined` means the answer was not usable. */
+export function parseGateAnswer(data: unknown): boolean | undefined {
+  const noul = (data as { answers?: { remember?: { noul?: unknown } } })?.answers?.remember?.noul;
+  if (typeof noul !== 'number' || Number.isNaN(noul)) return undefined;
+  return noul >= GATE_DECISION_THRESHOLD;
 }
 
 interface CaptureMessage {
@@ -150,6 +155,11 @@ export class Capture {
     } else if (this.buffer.length >= this.config.flushMessages) {
       void this.flush('size');
     }
+  }
+
+  /** Last `n` user messages still buffered (redacted, truncated) — recall-filter context. */
+  recentUserTexts(n: number): string[] {
+    return this.buffer.filter((m) => m.role === 'user').slice(-n).map((m) => m.content);
   }
 
   /** Send the current buffer; resolves when this flush's delivery completes. */
@@ -228,25 +238,20 @@ export class Capture {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (gate.apiKey) headers.Authorization = `Bearer ${gate.apiKey}`;
-      const response = await fetch(`${gate.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      // Decision models speak Ollama's /v1/systemone (Jev-style) endpoint;
+      // Ollama builds the model's prompt from state + questions.
+      const response = await fetch(`${gate.baseUrl.replace(/\/$/, '')}/systemone`, {
         method: 'POST',
         headers,
         signal: AbortSignal.timeout(gate.timeoutMs),
         body: JSON.stringify({
           model: gate.model,
-          messages: [
-            { role: 'system', content: GATE_PROMPT },
-            { role: 'user', content: excerpt },
-          ],
-          temperature: 0,
-          reasoning_effort: 'none',
+          state: excerpt,
+          questions: { remember: GATE_QUESTION },
         }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const answer = parseGateAnswer(String(data.choices?.[0]?.message?.content ?? ''));
+      const answer = parseGateAnswer(await response.json());
       if (answer === undefined) {
         this.log('capture: gate answer unparseable, capturing');
         return true;
