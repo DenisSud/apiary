@@ -74,10 +74,17 @@ billing and quotas, named teams, a marketplace, native mobile apps.
 
 ## Phases
 
-1. Foundations — connector, web app, lifecycle, self-config, admin layer (done).
-2. Service v1 — the pillars above made real (in progress).
-3. Container & hosted — self-host completeness, then per-user instances.
-4. Late stage — artifacts and beyond.
+Releases carry v0.x numbers until v1. The gates:
+
+1. **v0 — foundations** (done): connector, web app, lifecycle, self-config,
+   admin layer, container image.
+2. **v0-alpha** — usable end to end, self-hosted: the fleet, providers and
+   profile, conversation and memory work daily.
+3. **v0-beta** — feature-complete for power users: orchestration, secrets,
+   the System One quality/safety layer.
+4. **v1** — the product definition complete: hosted deployment and release
+   quality.
+5. **Beyond v1** — artifacts and other late-stage work.
 
 ## Iterating this doc
 
