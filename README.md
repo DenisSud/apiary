@@ -20,7 +20,7 @@ all load.
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
 ├── packages/systemone/  # System One decision client + shared config (local Kev)
 ├── packages/web/         # browser client served by the bridge
-├── docs/                 # vision, architecture, memory, container, self-config
+├── docs/                 # product, architecture, agents, deployment
 ├── deploy/               # service container: Dockerfile, build and run scripts
 ├── devenv.nix            # dev shell: node + bun, extractors, one command per task
 └── .pi/skills/           # project skills (frontend design, Chrome DevTools)
@@ -31,17 +31,15 @@ all load.
 | doc | what it covers |
 |---|---|
 | `AGENTS.md` | dev rules for this repo — read before changing anything |
-| `docs/vision.md` | what the product is, the deployment model, the phases |
-| `docs/architecture.md` | the service map: pieces, state, lifecycle, admin layer, attach path |
-| `docs/self-config.md` | bot vs stock pi, surface by surface, and the docs to fork |
-| `docs/memory.md` | the memory system: prompt sections, notes, scopes, tools |
-| `docs/container.md` | the container image, volumes and run scripts |
+| `docs/product.md` | what the product is: pillars, principles, phases |
+| `docs/architecture.md` | the service map: pieces, state, contracts, boundaries |
+| `docs/agents.md` | what an agent is: identity, memory, ownership, commit→apply |
+| `docs/deployment.md` | the container: image, volume, external services |
 | `packages/systemone/README.md` | the decision layer: client, config, wire protocol |
 | `packages/connector/README.md` | the agent registry, launcher and bridge |
 | `packages/web/README.md` | the browser client: modules, data flow, rendering rules |
 | `packages/web/design/plan.html` | the web app's design reference (open it in a browser) |
 | `.pi/skills/` | project skills (frontend design, Chrome DevTools) |
-| `base/extensions/*/SPEC.md` | per-extension specs (`memory`) and registry package specs |
 | `registry/README.md` | the package registry: policy and package list |
 
 ## Base
@@ -55,6 +53,7 @@ optional install.
 | `security` | vault-backed secrets profiles, output redaction, credential-store guards |
 | `sysinfo` | machine facts as the `<system_info>` prompt section |
 | `memory` | SOUL.md as the prompt preamble, BEHAVIOR.md as the behavior section, shared and per-agent notes, auto-committed writes |
+| `mem0` | automatic semantic memory: per-input recall, buffered capture, self-hosted server |
 
 Skills: `skill-authoring` (how to write skills well) and `self-config` (the
 setup interview and self-configuration workflow). The base is what every agent
@@ -78,7 +77,7 @@ endpoint, asking whether the call is dangerous and whether the user asked for
 it — Kev serves one:
 `uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b --port 8009`.
 It is a policy layer above the deterministic security guard, fail-open by
-default. See `registry/systemone/SPEC.md`.
+default. See `registry/systemone/README.md`.
 
 ## Agents
 
@@ -90,9 +89,10 @@ pi-bot new <name>    # scaffold one under $PI_BOTS_HOME
 
 An agent run is just `PI_CODING_AGENT_DIR=$PI_BOTS_HOME/<name>` — no `-e`, no
 `--append-system-prompt`, no `--session-dir`. Pi reads the agent dir as its
-agent dir: `APPEND_SYSTEM.md` is the persona, `skills/` and `extensions/` load
+agent dir: `SOUL.md` is the prompt preamble and `BEHAVIOR.md` the behavior
+section, `skills/` and `extensions/` load
 like any agent dir, `settings.json` pulls in this package, sessions stay
-local, and the memory extension points at the agent's own notes. Shared
+local, and the memory extensions point at the agent's own notes. Shared
 plumbing (`auth.json`, `models.json`, `models-store.json`, `trust.json`) is
 symlinked from the shared agent dir, so credentials, model catalogs and trust
 decisions are common to all agents.
@@ -104,7 +104,7 @@ private remote — pull --rebase before editing, push after.
 
 The container is the only supported runtime: `deploy/run.sh` runs the service
 from the `pi-bots:local` image, with the `/data` volume holding agents, state
-and credentials (see `docs/container.md`). The devenv shell runs the service on
+and credentials (see `docs/deployment.md`). The devenv shell runs the service on
 the host for development only.
 
 ### Settings

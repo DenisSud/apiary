@@ -7,7 +7,7 @@
  * probability crosses the threshold is blocked before execution.
  *
  * Without ~/.pi/agent/systemone.json the extension registers nothing. See
- * SPEC.md for the config, the wire protocol and the failure semantics.
+ * README.md for the config, the wire protocol and the failure semantics.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DecisionClient, loadConfig, type DecisionConfig } from "@pi-bots/systemone";

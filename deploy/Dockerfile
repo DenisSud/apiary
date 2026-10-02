@@ -3,7 +3,7 @@
 # The image bakes the service and the pi checkout; the user's agents, server
 # state and shared agent dir live in the /data volume. Build with
 # deploy/build.sh (it assembles the context from the local checkouts) and run
-# with deploy/run.sh. See docs/container.md.
+# with deploy/run.sh. See docs/deployment.md.
 
 FROM node:24-bookworm-slim
 

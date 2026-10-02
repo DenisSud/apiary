@@ -1,6 +1,7 @@
 # mem0 deployment
 
-The memory service (`docs/mem0.md`): one compose project on the RPi, under
+The memory service (`base/extensions/mem0/README.md`; ownership tracked in
+#34): one compose project on the RPi, under
 rootless podman, fronted by Caddy (`memory.sudakov.site` → `127.0.0.1:8888`).
 It is independent of the bots container — stopping bots must not stop memory.
 Consumers hold only the URL and a consumer key.

@@ -127,10 +127,8 @@ Other rules:
 ## Design
 
 `design/plan.html` is the living design reference (HIG-grounded: one accent,
-one type ramp, one easing curve, 4px grid, radius scale); `design/` also keeps
-one-off comparison pages (`tool-call-status.html`). The rules themselves, their
-rationale and the current status are in the deployment's web doc; the rules a
-change must respect are in `.pi/skills/frontend-design/SKILL.md`. Implemented in
+one type ramp, one easing curve, 4px grid, radius scale). The rules a change
+must respect are in `.pi/skills/frontend-design/SKILL.md`. Implemented in
 `style.css`: the token sheet and dark mode (`prefers-color-scheme`, no in-app
 toggle), the type ramp, the accent/error/warn separation, `--ease` +
 `--dur-in`/`--dur-out` on every transition, inline SVG icons, the mobile

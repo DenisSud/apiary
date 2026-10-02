@@ -7,7 +7,7 @@
  * Only the program's printed output is returned to the model — intermediate
  * tool results never enter context.
  *
- * Design + decisions: SPEC.md (read before changing contracts here).
+ * Interface and decisions: README.md (read before changing contracts here).
  *
  * Mechanics:
  *   - The program runs in a Node child process (same trust level as bash).

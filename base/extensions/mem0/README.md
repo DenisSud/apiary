@@ -1,13 +1,30 @@
-# mem0 — semantic memory
+# mem0 — automatic semantic memory
 
-Every agent recalls and stores facts in a self-hosted mem0 server
-(`docs/mem0.md` is the design). Recall is automatic per input; capture is
-automatic but buffered, gated and batched; the `mem0_memory` tool and the
-`/mem0` command give explicit access.
+Every agent recalls and stores facts in a self-hosted mem0 server. Recall is
+automatic per input; capture is automatic but buffered, filtered and batched;
+the `mem0_memory` tool and the `/mem0` command give explicit access. The
+curated note layer is separate (`base/extensions/memory/`).
 
 Vendored from `@amaster.ai/pi-memory-mem0` v0.1.2-beta.15 (Apache-2.0, see
 `LICENSE`), stripped to the self-hosted REST backend, plus the capture
 pipeline.
+
+## How it works
+
+```
+turn_end → buffer (user/assistant prose, redacted) → flush trigger
+         → decision gate: worth remembering? no → drop, yes → one batched add
+         → server extraction + embeddings → pgvector
+
+input → background recall search → minScore floor → optional relevance filter
+      → injected as [UNTRUSTED MEMORY DATA], never the system prompt
+```
+
+Flush triggers: `flushMessages`, `flushIdleMs`, `capMessages`, session end.
+The gate is a small decision model; on any gate failure the batch is sent
+(fail-open toward remembering). Capture never blocks a turn; a failed add
+drops its batch. Design history and gaps: #34. Decision calls move to
+`packages/systemone` (#35).
 
 ## Configuration
 
@@ -25,22 +42,21 @@ deployments without per-agent settings (the fleet container).
 | `userId` | — | `bot:<PI_BOT_NAME>` or `$USER` | namespace |
 | `userIdScope` | — | `project` | hash the cwd into the namespace (`exact` keeps it verbatim) |
 | `topK` | — | `5` | recall and search result limit |
+| `minScore` | — | `0.3` | client-side score floor on recall (`0` disables) |
+| `recallFilter.*` | `MEM0_FILTER_BASE_URL`, `MEM0_FILTER_MODEL` | off | one decision call over recall survivors |
 | `capture.flushMessages` | — | `12` | flush when the buffer holds this many messages |
 | `capture.flushIdleMs` | — | `180000` | flush this long after the last append |
 | `capture.capMessages` | — | `64` | hard buffer cap |
-| `capture.gate.enabled` | — | `true` when a gate URL is set | decision gate before capture |
-| `capture.gate.baseUrl` | `MEM0_GATE_BASE_URL` | — | OpenAI-compatible endpoint (Ollama) |
-| `capture.gate.model` | `MEM0_GATE_MODEL` | `tev1:4b` | gate model |
-| `capture.gate.timeoutMs` | — | `5000` | gate timeout; failure means capture |
+| `capture.gate.*` | `MEM0_GATE_BASE_URL`, `MEM0_GATE_MODEL` | on when a URL is set | decision gate before capture |
 | `autoCapture` (env form) | `MEM0_AUTO_CAPTURE` | — | `true`/`false` wins over settings (bulk runs) |
 
-## Capture pipeline
+## Status (2026-10-02)
 
-`turn_end` text is appended to a per-session buffer (redacted, truncated). A
-flush — size, idle, cap, or session end — runs one gate call over the whole
-batch; a "no" drops it, everything else posts it to mem0 as a single
-conversation. The gate is a small decision model (`docs/mem0.md` measured the
-models); the extractor is chosen server-side via mem0's `/configure`.
+Live as an experiment against the self-hosted service (`deploy/mem0/`):
+capture, recall, tools, the gate and the relevance filter run. Extraction
+currently runs server-side on a local model. Known gaps (top_k, dedup ≥1000,
+redaction holes, recall-block accumulation) are a checklist in #34 — fix as
+part of owning and stripping the stack.
 
 ## Layout
 

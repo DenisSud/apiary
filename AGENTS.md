@@ -13,7 +13,8 @@ This file is only useful while it is true. Treat it as part of the change:
   relevant section (or to `docs/` if it is knowledge, not behavior).
 - A rule below turns out to be wrong or obsolete → delete it instead of
   working around it.
-- A plan, design discussion, or rationale → `docs/`, never here.
+- A plan, design discussion, or rationale → the issue tracker or a component
+  README, never here.
 
 If you are an agent that just spent effort figuring something out, that effort
 is the signal to write it down.
@@ -25,7 +26,7 @@ A service that runs a fleet of pi agents and exposes them through a web app
 the shared backend is pi's experimental server stack behind a small connector;
 the browser client is `packages/web`. The long-term deployment is
 JupyterLab-style: one container per user holds the agents, their shared
-environment, their memory, and the service itself. See `docs/vision.md`.
+environment, their memory, and the service itself. See `docs/product.md`.
 
 This repository is the **base of the system**, not one person's
 configuration. Keep it usable by someone else. Personal deployment details
@@ -55,8 +56,9 @@ agent dirs and the local rules overlay — not in the base.
 - Smallest solution that holds. Reuse what exists; no abstractions,
   dependencies, or configuration for hypothetical needs.
 - Fix root causes, not symptoms: one fix where all callers route through.
-- Keep behavior and knowledge apart: behavior here, plans and rationale in
-  `docs/`, per-package detail in the package READMEs.
+- Keep behavior and knowledge apart: behavior here; docs hold durable ideas
+  and component interfaces; specs of record live in the issue tracker;
+  per-package detail in the package READMEs.
 - ESM only, top-level imports, no `any` unless unavoidable. Node 24 runs the
   TypeScript directly (type stripping), so tests are plain `node --test`.
 - Direct external dependencies are pinned to exact versions. Ask before
@@ -69,25 +71,26 @@ agent dirs and the local rules overlay — not in the base.
 
 | path | what |
 |---|---|
-| `base/` | the base pi package every agent loads — extensions: security, sysinfo, memory; skills: skill-authoring, self-config |
+| `base/` | the base pi package every agent loads — extensions: security, sysinfo, memory, mem0; skills: skill-authoring, self-config |
 | `registry/` | agent-usable pi packages an agent may declare (ptc, web-search, systemone, grilling, self-improvement, handoff) |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
 | `packages/connector/` | bot registry, launcher, bridge — `pi-bot`, `pi-bots-web` (`bin/`) |
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
-| `packages/systemone/` | System One decision client + shared config (local Kev) |
+| `packages/systemone/` | System One decision client + shared config (tev/Kev) |
 | `packages/web/` | browser client served by the bridge (vanilla TS, esbuild) |
-| `deploy/` | service container image: Dockerfile, build and run scripts (issue #18) |
-| `docs/` | project vision, architecture, memory, container, self-config |
+| `deploy/` | service container image: Dockerfile, build and run scripts (issues #18, #36) |
+| `docs/` | product spec, architecture, agents, deployment |
 | `.pi/skills/` | project skills (pi loads them from the repo root) |
 | `devenv.nix` | dev shell and task commands |
 
 ## Docs
 
-- `docs/vision.md` — what the product is, the deployment model, the phases.
-- `docs/architecture.md` — the service map: pieces, state, lifecycle, admin layer, attach path.
-- `docs/memory.md` — the memory system: prompt sections, notes, scopes, tools.
-- `docs/self-config.md` — bot vs stock pi surface by surface, and the docs to fork.
-- `docs/container.md` — the container deployment: image, volume, decisions, deferred work.
+- `docs/product.md` — what the product is: pillars, principles, phases.
+- `docs/architecture.md` — the service map: pieces, state, contracts, boundaries.
+- `docs/agents.md` — what an agent is: identity, memory, ownership, commit→apply.
+- `docs/deployment.md` — the container: image, volume, external services.
+- Docs state ideas and interfaces; the how lives in code, history in git, specs
+  of record in the issue tracker. Never park design records here.
 - `registry/README.md` — the package registry: policy, package list, install path.
 - `packages/pi-manager/README.md` — bot lifecycle API, scaffold shape, commit→apply, reconciler, archive semantics.
 - `packages/auth/README.md` — provider login sessions and the bridge frame mapping.
@@ -98,8 +101,8 @@ agent dirs and the local rules overlay — not in the base.
 - `.pi/skills/frontend-design/SKILL.md` — the rules for UI work.
 - `.pi/skills/chrome-devtools-cli/SKILL.md` — driving a real browser from the
   terminal (upstream Chrome DevTools skill; NixOS setup in its `references/local.md`).
-- Forgejo `DenisSud/pi-bots` issues #1–#32 — the service backlog; labels
-  `pkg:*` and `area:*`, milestones `Service v1` and `Later`.
+- Forgejo `DenisSud/pi-bots` issues #1–#36 — the service backlog; labels
+  `pkg:*`, `area:*` and `research`, milestones `Service v1` and `Later`.
 
 ## The pi source monorepo
 
@@ -192,7 +195,7 @@ not leave scratch files in the repo.
 - Bot sessions: go through the connector, not the stock in-process path.
 - Container: `deploy/build.sh` then `deploy/run.sh`; smoke it with
   `docker exec pi-bots pi-bot new smoke && docker exec pi-bots pi-bot resolve smoke`
-  and `curl 127.0.0.1:8787/api/bots`. See `docs/container.md`.
+  and `curl 127.0.0.1:8787/api/bots`. See `docs/deployment.md`.
 
 ## Git
 

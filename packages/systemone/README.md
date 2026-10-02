@@ -55,7 +55,7 @@ results or fetched pages) is the caller's job.
 `guard`: `enabled` (`true`), `tools` (`["bash","ptc"]`), `threshold` (`0.5`),
 `authorizedThreshold` (`0.7`), `onError` (`"open"`), `contextMessages` (`4`),
 `contextChars` (`1500`), `blockedMessage` (—). See
-`registry/systemone/SPEC.md` for what they mean.
+`registry/systemone/README.md` for what they mean.
 
 Sections for other consumers (compaction, search filtering) are added to this
 schema as they are built.
