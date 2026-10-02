@@ -199,22 +199,15 @@ not leave scratch files in the repo.
 
 ## Git and Forgejo
 
-Two long-lived branches:
+Trunk-based: `main` is the only long-lived branch and is protected — changes
+reach it only through a pull request on Forgejo, never a direct push.
 
-- `main` — stable and always workable. Protected: changes reach it only
-  through a pull request (normally `dev` → `main`, after testing); never a
-  direct push.
-- `dev` — integration. Feature branches merge here; small fixes may be
-  committed directly.
-
-- Sizable work: a branch per feature (`feat/<slug>` or `<area>/<slug>`) off
-  `dev`, pushed and PR'd into `dev`, linked to its work thread (`Refs #N`).
-- Small fixes: a short-lived `fix/<slug>` branch and a PR, or a direct
-  commit to `dev`; no issue needed for trivia.
-- Testing gate: `check` (plus the relevant smoke) before merging into `dev`;
-  `check` plus the container smoke before `dev` → `main`.
-- Hotfixes: branch off `main`, PR into `main`, then merge `main` back into
-  `dev` so the branches do not drift.
+- Sizable work: a branch per feature (`feat/<slug>` or `<area>/<slug>`),
+  branched from `main`, pushed, PR'd into `main`, linked to its work thread
+  (`Refs #N`).
+- Small fixes: a short-lived `fix/<slug>` branch and a PR; no issue needed
+  for trivia.
+- Testing gate: `check` (plus the relevant smoke) before opening the PR.
 - Merging is the maintainer's call; open the PR and stop.
 - Stage explicit paths; never `git add -A`, never force-push, never rewrite
   shared history.

@@ -178,6 +178,6 @@ Two host dependencies stay outside the devenv on purpose:
 - **the pi source checkout** — agents are spawned from `$PI_SOURCE_DIR`
   (default `~/dev/pi`) and the web bundle resolves `@pi/fork/*` there.
 
-Run `check` before opening a PR. `main` is protected: work lands on `dev`
-(feature branches, or small direct fixes), and `dev` merges to `main`
-through a pull request once tested.
+Run `check` before opening a PR. `main` is protected: branch per feature (or
+a short-lived fix branch) off `main`, push, and open the pull request on
+Forgejo.
