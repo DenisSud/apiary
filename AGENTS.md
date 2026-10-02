@@ -149,7 +149,7 @@ dependencies stay outside the devenv on purpose: the `pi` binary (extension
 test runners resolve the installed store from `command -v pi`) and the pi
 source checkout (`$PI_SOURCE_DIR`).
 
-Run `check` before committing code. It does not cover tests that need network
+Run `check` before opening a PR. It does not cover tests that need network
 or a live bot; for those follow the package READMEs.
 
 ## ptc: fast debugging and bulk work
@@ -197,13 +197,29 @@ not leave scratch files in the repo.
   `docker exec pi-bots pi-bot new smoke && docker exec pi-bots pi-bot resolve smoke`
   and `curl 127.0.0.1:8787/api/bots`. See `docs/deployment.md`.
 
-## Git
+## Git and Forgejo
 
+Two long-lived branches:
+
+- `main` — stable and always workable. Protected: changes reach it only
+  through a pull request (normally `dev` → `main`, after testing); never a
+  direct push.
+- `dev` — integration. Feature branches merge here; small fixes may be
+  committed directly.
+
+- Sizable work: a branch per feature (`feat/<slug>` or `<area>/<slug>`) off
+  `dev`, pushed and PR'd into `dev`, linked to its work thread (`Refs #N`).
+- Small fixes: a short-lived `fix/<slug>` branch and a PR, or a direct
+  commit to `dev`; no issue needed for trivia.
+- Testing gate: `check` (plus the relevant smoke) before merging into `dev`;
+  `check` plus the container smoke before `dev` → `main`.
+- Hotfixes: branch off `main`, PR into `main`, then merge `main` back into
+  `dev` so the branches do not drift.
+- Merging is the maintainer's call; open the PR and stop.
 - Stage explicit paths; never `git add -A`, never force-push, never rewrite
   shared history.
 - Message prefix by area: `web:`, `connector:`, `extensions:`, `docs:` —
-  short and descriptive; push after committing.
-- `main` is the live base; work on `dev`.
+  short and descriptive.
 
 ## Personal deployment
 
