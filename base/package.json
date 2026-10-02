@@ -1,0 +1,25 @@
+{
+  "name": "@pi-bots/base",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The base pi package: the extensions and skills every agent loads",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}

@@ -1,3 +1,17 @@
 node_modules/
 *.log
-.pi/
+
+# pi project dir: skills are shared, local config is not
+.pi/*
+!.pi/skills/
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml

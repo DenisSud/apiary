@@ -1,0 +1,16 @@
+{
+  "name": "@pi-bots/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider login sessions over pi's ModelRuntime",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.87.1",
+    "@earendil-works/pi-coding-agent": "0.87.1"
+  }
+}

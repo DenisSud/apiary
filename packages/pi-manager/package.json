@@ -1,0 +1,15 @@
+{
+  "name": "@pi-bots/pi-manager",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bot lifecycle: scaffold, read, update, archive and delete agent dirs",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1"
+  }
+}

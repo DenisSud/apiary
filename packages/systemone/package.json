@@ -1,0 +1,12 @@
+{
+  "name": "@pi-bots/systemone",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Decision-model client and config: typed questions to a System One endpoint (Kev/TypeSafe)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  }
+}
