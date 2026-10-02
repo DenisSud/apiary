@@ -5,6 +5,8 @@
 
 import { truncateHead, truncateLine } from '@earendil-works/pi-coding-agent';
 import { formatRecalledMemory } from './privacy.ts';
+import type { RecallFilterConfig } from './relevance.ts';
+import { filterRelevantEntries } from './relevance.ts';
 import type { Mem0Provider } from './provider.ts';
 import type { MemoryItem } from './types.ts';
 
@@ -13,23 +15,42 @@ const MAX_ENTRY_CHARS = 1_000;
 const MAX_BLOCK_BYTES = 8 * 1024;
 const MAX_BLOCK_LINES = 50;
 
+export interface PrefetchOptions {
+  agentId?: string;
+  topK: number;
+  /** Minimum similarity score; entries without a score are kept. Undefined disables. */
+  minScore?: number;
+  /** Optional decision-model relevance pass over the minScore survivors. */
+  recallFilter?: RecallFilterConfig;
+  /** Prior user turns for the relevance pass (called at consume time). */
+  contextTurns?: () => string[];
+}
+
 export class Prefetch {
   private readonly provider: Mem0Provider;
   private readonly userId: string;
   private readonly agentId: string | undefined;
   private readonly topK: number;
+  private readonly minScore: number | undefined;
+  private readonly recallFilter: RecallFilterConfig | undefined;
+  private readonly contextTurns: (() => string[]) | undefined;
   private pending: Promise<MemoryItem[]> | null = null;
+  private pendingQuery = '';
 
-  constructor(provider: Mem0Provider, userId: string, opts: { agentId?: string; topK: number }) {
+  constructor(provider: Mem0Provider, userId: string, opts: PrefetchOptions) {
     this.provider = provider;
     this.userId = userId;
     this.agentId = opts.agentId;
     this.topK = opts.topK;
+    this.minScore = opts.minScore;
+    this.recallFilter = opts.recallFilter;
+    this.contextTurns = opts.contextTurns;
   }
 
   /** Phase 1: kick off a background search (called on input with user text). */
   queue(query: string): void {
     if (!query.trim()) return;
+    this.pendingQuery = query;
     const search = this.provider.search(query, {
       userId: this.userId,
       ...(this.agentId ? { agentId: this.agentId } : {}),
@@ -55,7 +76,13 @@ export class Prefetch {
 
       if (memories.length === 0) return '';
 
-      const lines = memories
+      const filtered = this.minScore
+        ? memories.filter((m) => m.score === undefined || m.score >= this.minScore!)
+        : memories;
+      const relevant = this.recallFilter
+        ? await this.applyRecallFilter(filtered)
+        : filtered;
+      const lines = relevant
         .filter((m) => m.memory?.trim())
         .map((m) => {
           const date = (m.updated_at ?? m.created_at)?.slice(0, 10);
@@ -70,5 +97,20 @@ export class Prefetch {
     } catch {
       return '';
     }
+  }
+
+  /** Relevance pass over MemoryItems; unusable decisions keep their entry. */
+  private async applyRecallFilter(entries: MemoryItem[]): Promise<MemoryItem[]> {
+    const recallFilter = this.recallFilter;
+    if (!recallFilter) return entries;
+    const candidates = entries.map((entry) => ({ id: entry.id, text: entry.memory ?? '' }));
+    const kept = await filterRelevantEntries(
+      candidates,
+      this.pendingQuery,
+      this.contextTurns?.() ?? [],
+      recallFilter,
+    );
+    const keptIds = new Set(kept.map((candidate) => candidate.id));
+    return entries.filter((entry) => keptIds.has(entry.id));
   }
 }

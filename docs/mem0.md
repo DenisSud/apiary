@@ -161,21 +161,32 @@ Unchanged from the ported extension:
 
 **TL;DR: mem0 returns pure nearest-neighbors — no score threshold. `"are we
 there yet?"` still pulled 5 entries at scores 0.20–0.24; genuinely relevant
-queries score 0.32–0.66. Fix: client `minScore` config (default ~0.30), then
-an optional tev1 relevance pass over the survivors. Both live in the
-extension, not the server.**
+queries score 0.32–0.66. Fix (implemented 2026-10-02, both live in the
+extension, not the server): client `minScore` filter, then an optional tev1
+relevance pass over the survivors via `/v1/systemone`.**
 
 Search scores on the live corpus: irrelevant top hits 0.20–0.24, routine
 queries 0.32–0.40, on-topic queries 0.56–0.66. The server applies no floor,
-so empty or off-topic inputs always surface SOMETHING. Plan:
+so empty or off-topic inputs always surface SOMETHING. Implemented:
 
-1. `minScore` config (client-side filter on returned scores; ~0.30 default,
-   tuned against recall spot-checks). Zero-risk, kills the common case.
-2. Optional `recallFilter` (default off): one tev1:4b call (~100 ms on the
-   PC) — top-k entries + last 2 user turns → keep/drop per entry. Runs only
-   when at least one entry passes `minScore`, so most turns stay model-free.
-   Capture-adjacent; the latency fix there is local embedder on the RPi or a
-   shorter consume timeout, not a new model.
+1. `minScore` config (client-side filter on returned scores; 0.30 default,
+   entries without a score are kept, 0 disables). Zero-risk, kills the
+   common case.
+2. `recallFilter` (default off): ONE tev1 call via Ollama's `/v1/systemone`
+   endpoint (Jev-style typed API, Ollama 0.35+) — one `noul` question per
+   candidate ("is memory_N relevant to the current message?"), state carries
+   the current message + up to 2 prior user turns + the candidate texts.
+   Keep at noul ≥ 0.5. Runs only when at least one entry passes `minScore`,
+   so most turns stay model-free. Warm call ≈ 125 ms on the PC; probe
+   separation: on-topic 0.93 vs off-topic 0.05. Fail-open like the gate:
+   timeout/HTTP error/missing answer keeps the entry, so a cold or misbehaving
+   filter never starves recall.
+
+The capture gate also moved to `/v1/systemone` the same day: one `noul`
+question ("does this batch contain durable information?") instead of a
+chat-completions JSON prompt, which was the wrong interface for a decision
+model (Ollama builds tev1's prompt itself on systemone). Threshold stays
+0.5; config shape (`baseUrl`, `model`, `timeoutMs`, `apiKey`) is unchanged.
 
 The injected block stays small (`MAX_BLOCK_BYTES` 8 KB, 50 lines); the issue
 is relevance, not size.
@@ -197,6 +208,13 @@ the agent dir.
     "autoRecall": true,
     "toolEnabled": true,
     "topK": 5,
+    "minScore": 0.3,
+    "recallFilter": {
+      "enabled": true,
+      "baseUrl": "http://192.168.1.20:11434/v1",
+      "model": "tev1:4b",
+      "timeoutMs": 1500
+    },
     "capture": {
       "flushMessages": 12,
       "flushIdleMs": 180000,
@@ -214,7 +232,8 @@ the agent dir.
 
 In the container: `apiKey` comes from `MEM0_API_KEY` (a consumer key injected
 at run time), `baseUrl` from `MEM0_BASE_URL`; the gate endpoint from
-`MEM0_GATE_BASE_URL` / `MEM0_GATE_MODEL`. `apiKeyProfile` (rbw) is the
+`MEM0_GATE_BASE_URL` / `MEM0_GATE_MODEL`; the recall-filter endpoint from
+`MEM0_FILTER_BASE_URL` / `MEM0_FILTER_MODEL`. `apiKeyProfile` (rbw) is the
 host-only resolution path; the image has no rbw.
 
 ## Service operations
@@ -248,6 +267,36 @@ host-only resolution path; the image has no rbw.
 3. Tune flush sizes from session telemetry (flushes per session, messages per
    flush, skip rate).
 4. Re-check the dedup command cadence once capture volume is known.
+
+## Known gaps (adversarial review, 2026-10-02)
+
+First recorded here (prior list lived in an ephemeral session memo). Not yet
+fixed; tests to be added with each fix.
+
+- **High**
+  - `provider.ts` `getAll` sends no `top_k` → server default 20 truncates the
+    status line, `/mem0 profile`, `mem0_memory get_all` (~922 memories).
+  - `provider.ts` `getDedupGroups` hard-throws at ≥1000 memories (server caps
+    `top_k` at 1000, no pagination server-side yet).
+  - `privacy.ts` redaction gaps — verified leaks: JSON `"password": "…"`,
+    `AWS_SECRET_ACCESS_KEY=…`, DB-URL passwords (`postgres://user:pw@host`),
+    `Authorization: Basic …`, bare `sk-…`, `xoxb-…`, `ssh-rsa …`.
+  - Recall-block accumulation (`index.ts` + `prefetch.ts`): one 8 KB/
+    50-line block per prompt persists in context. Fix: handle the `context`
+    event and keep only the newest `mem0-recall` block.
+- **Medium**: `turn_end` captures aborted/errored assistant text; `input`
+  does not ignore `source: "extension"` user messages; recall search query is
+  not truncated; `parseGateAnswer` falls back to the first bare `true|false`;
+  gate excerpt cap 12 000 chars > gate box `n_ctx_slot = 4096`;
+  `refreshMemoryStatus` full-fetches on every add.
+- **Low**: prefetch race timer not cleared; `cachedApiKey` lives for the
+  process; `delete` is not scope-checked (server doesn't scope consumer
+  keys); `reasoning_effort: 'none'` is Ollama-shaped.
+- Tests: `base/extensions/mem0/test/harness.mjs` (26 tests, fake servers, no
+  network) covers none of the above yet.
+- Server-side need: `offset` support in `deploy/mem0/app/main.py` (`GET
+  /memories`, scoped + admin paths) → RPi redeploy; until then dedup stays
+  capped for stores ≥1000.
 
 ## Open questions
 

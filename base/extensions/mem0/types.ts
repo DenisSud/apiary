@@ -80,8 +80,23 @@ export interface Mem0ExtensionConfig {
   userIdScope?: MemoryUserIdScope;
   /** Max results for automatic recall and mem0_memory search. Must be an integer greater than 0. Default: 5 */
   topK?: number;
+  /** Minimum similarity score for automatic recall entries; entries without a score are kept. 0 disables. Default: 0.3 */
+  minScore?: number;
   /** Automatic capture pipeline: buffer → gate → batch. */
   capture?: Mem0CaptureConfig;
+  /** Optional decision-model relevance pass over recalled entries (default off). */
+  recallFilter?: Mem0RecallFilterConfig;
+}
+
+export interface Mem0RecallFilterConfig {
+  /** Enable the relevance pass over minScore survivors. Default: false. */
+  enabled?: boolean;
+  /** OpenAI-compatible chat endpoint. Default: capture.gate.baseUrl (same Ollama host). */
+  baseUrl?: string;
+  /** Decision model name. Default: "tev1:4b". */
+  model?: string;
+  /** Per-decision timeout in milliseconds. Default: 1500. */
+  timeoutMs?: number;
 }
 
 export interface MemoryItem {

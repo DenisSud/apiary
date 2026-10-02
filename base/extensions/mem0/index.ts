@@ -38,6 +38,7 @@ import { Capture, resolveCaptureConfig, type CaptureConfig } from './capture.ts'
 import { dedupProviderMemories } from './dedup.ts';
 import { Prefetch } from './prefetch.ts';
 import { formatRecalledMemory, redactMemoryText, scopeMemoryUserId } from './privacy.ts';
+import { resolveRecallFilterConfig } from './relevance.ts';
 import {
   createMem0Provider,
   type Mem0Provider,
@@ -107,6 +108,13 @@ function loadConfig(): Mem0ExtensionConfig {
   }
   if (!gate.model?.trim() && process.env.MEM0_GATE_MODEL) {
     gate.model = process.env.MEM0_GATE_MODEL;
+  }
+  const recallFilter = (config.recallFilter ??= {});
+  if (!recallFilter.baseUrl?.trim() && process.env.MEM0_FILTER_BASE_URL) {
+    recallFilter.baseUrl = process.env.MEM0_FILTER_BASE_URL;
+  }
+  if (!recallFilter.model?.trim() && process.env.MEM0_FILTER_MODEL) {
+    recallFilter.model = process.env.MEM0_FILTER_MODEL;
   }
   // Deployment-level switch: an explicit env value wins over settings (used
   // to silence capture for bulk runs, e.g. a migration).
@@ -216,6 +224,18 @@ export default function mem0Extension(pi: ExtensionAPI): void {
           'topK must be an integer greater than 0. Use autoRecall: false to disable automatic recall.',
         );
       }
+      if (
+        config.minScore !== undefined &&
+        (typeof config.minScore !== 'number' ||
+          Number.isNaN(config.minScore) ||
+          config.minScore < 0 ||
+          config.minScore > 1)
+      ) {
+        throw new Error('minScore must be a number between 0 and 1.');
+      }
+      if (config.recallFilter !== undefined && typeof config.recallFilter !== 'object') {
+        throw new Error('recallFilter must be an object.');
+      }
       for (const key of ['autoCapture', 'autoRecall', 'toolEnabled'] as const) {
         if (config[key] !== undefined && typeof config[key] !== 'boolean') {
           throw new Error(`${key} must be a boolean.`);
@@ -254,9 +274,20 @@ export default function mem0Extension(pi: ExtensionAPI): void {
             entry.data === sessionId,
         );
       if (autoRecall) {
+        // Recall relevance: vector-search minScore floor, then an optional
+        // decision-model relevance pass (same endpoint as the capture gate by
+        // default). Both fail toward keeping entries.
+        const recallFilter = resolveRecallFilterConfig(
+          config.recallFilter,
+          config.capture?.gate?.baseUrl,
+        );
         prefetch = new Prefetch(provider, userId, {
           ...(agentId ? { agentId } : {}),
           topK,
+          minScore: config.minScore,
+          ...(recallFilter.enabled && recallFilter.baseUrl ? { recallFilter } : {}),
+          // Read at consume time; the capture buffer holds redacted user turns.
+          contextTurns: () => capture?.recentUserTexts(2) ?? [],
         });
       }
       if (activeAutoCapture) {

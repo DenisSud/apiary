@@ -25,6 +25,7 @@ import { createServer } from "node:http";
 import mem0Extension from "../index.ts";
 import { Capture, parseGateAnswer, resolveCaptureConfig } from "../capture.ts";
 import { dedupProviderMemories } from "../dedup.ts";
+import { filterRelevantEntries, parseRelevanceAnswers, resolveRecallFilterConfig } from "../relevance.ts";
 import { Prefetch } from "../prefetch.ts";
 import { formatRecalledMemory, redactMemoryText, scopeMemoryUserId } from "../privacy.ts";
 import { createMem0Provider } from "../provider.ts";
@@ -399,6 +400,137 @@ test("prefetch: consume times out to an empty string", async () => {
 	const prefetch = new Prefetch(provider, "u", { topK: 5 });
 	prefetch.queue("q");
 	assertEqual(await prefetch.consume(50), "");
+});
+
+test("prefetch: minScore drops low-score entries, keeps unscored", async () => {
+	const provider = stubProvider();
+	provider.search = async () => [
+		{ id: "1", memory: "strong", score: 0.62 },
+		{ id: "2", memory: "noise", score: 0.21 },
+		{ id: "3", memory: "unscored" },
+	];
+	const prefetch = new Prefetch(provider, "u", { topK: 5, minScore: 0.3 });
+	prefetch.queue("q");
+	const block = await prefetch.consume(1000);
+	assert(block.includes("strong"), block);
+	assert(block.includes("unscored"), block);
+	assert(!block.includes("noise"), block);
+});
+
+test("prefetch: all entries below minScore yields no block", async () => {
+	const provider = stubProvider();
+	provider.search = async () => [{ id: "1", memory: "noise", score: 0.21 }];
+	const prefetch = new Prefetch(provider, "u", { topK: 5, minScore: 0.3 });
+	prefetch.queue("q");
+	assertEqual(await prefetch.consume(1000), "");
+});
+
+test("prefetch: recallFilter drops entries it rejects", async () => {
+	const provider = stubProvider();
+	provider.search = async () => [
+		{ id: "1", memory: "relevant", score: 0.6 },
+		{ id: "2", memory: "irrelevant", score: 0.6 },
+	];
+	const filter = await startServer((record, res) => {
+		assertEqual(record.url, "/v1/systemone");
+		assertEqual(record.body.model, "tev1:4b");
+		assert(record.body.questions.memory_0, "one noul question per candidate");
+		assert(record.body.questions.memory_1, "one noul question per candidate");
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({
+			answers: { memory_0: { noul: 0.9 }, memory_1: { noul: 0.1 } },
+		}));
+		return true;
+	});
+	try {
+		const prefetch = new Prefetch(provider, "u", {
+			topK: 5,
+			minScore: 0.3,
+			recallFilter: resolveRecallFilterConfig(
+				{ enabled: true, baseUrl: `${filter.url}/v1` },
+				undefined,
+			),
+		});
+		prefetch.queue("q");
+		const block = await prefetch.consume(2000);
+		assert(block.includes("relevant"), block);
+		assert(!block.includes("irrelevant"), block);
+	} finally {
+		await filter.close();
+	}
+});
+
+test("prefetch: recallFilter failure falls back to unfiltered entries", async () => {
+	const provider = stubProvider();
+	provider.search = async () => [{ id: "1", memory: "kept", score: 0.6 }];
+	const filter = await startServer((record, res) => {
+		res.writeHead(500, { "Content-Type": "application/json" });
+		res.end("{}");
+		return true;
+	});
+	try {
+		const prefetch = new Prefetch(provider, "u", {
+			topK: 5,
+			minScore: 0.3,
+			recallFilter: resolveRecallFilterConfig(
+				{ enabled: true, baseUrl: `${filter.url}/v1` },
+				undefined,
+			),
+		});
+		prefetch.queue("q");
+		const block = await prefetch.consume(2000);
+		assert(block.includes("kept"), block);
+	} finally {
+		await filter.close();
+	}
+});
+
+// ── relevance ─────────────────────────────────────────────────────────
+
+test("relevance: config resolution defaults off and falls back to the gate URL", () => {
+	assertEqual(resolveRecallFilterConfig(undefined, undefined).enabled, false);
+	const resolved = resolveRecallFilterConfig({ enabled: true }, "http://pc:11434/v1");
+	assertEqual(resolved.baseUrl, "http://pc:11434/v1");
+	assertEqual(resolved.model, "tev1:4b");
+	assertEqual(resolved.timeoutMs, 1500);
+	const explicit = resolveRecallFilterConfig(
+		{ enabled: true, baseUrl: "http://other:11434/v1", model: "tev1:0.8b", timeoutMs: 900 },
+		"http://pc:11434/v1",
+	);
+	assertEqual(explicit.baseUrl, "http://other:11434/v1");
+	assertEqual(explicit.model, "tev1:0.8b");
+	assertEqual(explicit.timeoutMs, 900);
+	let threw = false;
+	try {
+		resolveRecallFilterConfig({ enabled: true, timeoutMs: 0 }, undefined);
+	} catch {
+		threw = true;
+	}
+	assert(threw, "timeoutMs 0 should throw");
+});
+
+test("relevance: answer parsing", () => {
+	assertEqual(parseRelevanceAnswers({ answers: { memory_0: { noul: 0.8 } } }).memory_0, true);
+	assertEqual(parseRelevanceAnswers({ answers: { memory_0: { noul: 0.3 } } }).memory_0, false);
+	assertEqual(parseRelevanceAnswers({ answers: { memory_0: {} } }).memory_0, undefined);
+	assertEqual(Object.keys(parseRelevanceAnswers({})).length, 0);
+});
+
+test("relevance: disabled or unconfigured passes entries through", async () => {
+	const entries = [{ id: "1", text: "kept" }];
+	assertEqual(
+		await filterRelevantEntries(entries, "q", [], resolveRecallFilterConfig({ enabled: true }, undefined)),
+		entries,
+	);
+	assertEqual(
+		await filterRelevantEntries(
+			entries,
+			"q",
+			[],
+			resolveRecallFilterConfig({ enabled: true, baseUrl: "http://127.0.0.1:1/v1" }, undefined),
+		),
+		entries,
+	);
 });
 
 // ── dedup ─────────────────────────────────────────────────────────────────

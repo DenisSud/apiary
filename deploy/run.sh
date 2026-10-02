@@ -19,7 +19,7 @@ pids="${PI_BOTS_PIDS:-512}"
 # Semantic memory (optional): forward the deployment's mem0 settings to the
 # bots. The values are injected at run time; nothing is baked into the image.
 mem0_env=()
-for name in MEM0_BASE_URL MEM0_API_KEY MEM0_GATE_BASE_URL MEM0_GATE_MODEL; do
+for name in MEM0_BASE_URL MEM0_API_KEY MEM0_GATE_BASE_URL MEM0_GATE_MODEL MEM0_FILTER_BASE_URL MEM0_FILTER_MODEL; do
   if [ -n "${!name:-}" ]; then mem0_env+=(-e "$name"); fi
 done
 
