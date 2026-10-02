@@ -4,6 +4,11 @@ How an agent remembers: two identity files rendered into the prompt, notes
 with generated indexes, and the shared user profile. The implementation is
 `base/extensions/memory/`; its `SPEC.md` is the historical design record.
 
+Automatic semantic memory lives in `base/extensions/mem0/` — recall injected
+per input, capture buffered, gated and batched against a self-hosted mem0
+server. Notes stay the curated layer the agent edits deliberately; mem0 is
+the automatic index. Design, config, models and deployment: `docs/mem0.md`.
+
 ## Prompt sections
 
 | source | section | notes |

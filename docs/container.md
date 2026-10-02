@@ -21,6 +21,15 @@ development and tests; that is tooling, not a runtime.
 - a system git identity, so scaffold and notes commits work without a user
   config.
 
+The bot servers run pi from source, so the pi checkout must carry its
+generated model catalogs (`packages/ai/src/providers/data`). They are
+gitignored and fetched from models.dev: run `npm run hydrate-model-data` in
+`$PI_SOURCE_DIR/packages/ai` once per checkout before building, otherwise the
+servers die at startup. (If models.dev is unreachable, the same files ship in
+the published `@earendil-works/pi-ai` tarball under `dist/providers/data/`,
+but the version must match the checkout's `*.models.ts`.) `build.sh` refuses
+to build without them.
+
 Build from the local checkouts:
 
 ```sh
@@ -47,6 +56,12 @@ detached bot servers; the dropped capabilities and `no-new-privileges` cost
 nothing because the service needs none. Resource limits are conservative
 defaults (`PI_BOTS_MEMORY`, `PI_BOTS_CPUS`, `PI_BOTS_PIDS` override them);
 the hosted control plane (#24) will own per-user limits.
+
+Semantic memory: `base/extensions/mem0/` reads `MEM0_BASE_URL` and
+`MEM0_API_KEY` (a consumer key) plus `MEM0_GATE_BASE_URL` / `MEM0_GATE_MODEL`
+for the capture gate. Export them when starting the container — the launcher
+forwards its environment to every bot server. Keys are injected at run time,
+never baked into the image (no rbw inside).
 
 Everything stateful lives in the `/data` volume:
 
