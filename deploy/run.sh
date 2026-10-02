@@ -16,6 +16,13 @@ memory="${PI_BOTS_MEMORY:-4g}"
 cpus="${PI_BOTS_CPUS:-4}"
 pids="${PI_BOTS_PIDS:-512}"
 
+# Semantic memory (optional): forward the deployment's mem0 settings to the
+# bots. The values are injected at run time; nothing is baked into the image.
+mem0_env=()
+for name in MEM0_BASE_URL MEM0_API_KEY MEM0_GATE_BASE_URL MEM0_GATE_MODEL; do
+  if [ -n "${!name:-}" ]; then mem0_env+=(-e "$name"); fi
+done
+
 exec docker run --rm -it \
   --name pi-bots \
   --read-only --tmpfs /tmp \
@@ -24,4 +31,5 @@ exec docker run --rm -it \
   --memory "$memory" --cpus "$cpus" --pids-limit "$pids" \
   -p "127.0.0.1:${port}:8787" \
   -v pi-bots-data:/data \
+  "${mem0_env[@]}" \
   "$image"
