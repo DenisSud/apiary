@@ -211,6 +211,17 @@ async function runProgram(
 	let toolCalls = 0;
 	let stderrTail = "";
 	const childStdin = child.stdin;
+	// A tool reply can race the child's lifetime: the program may exit, be
+	// aborted, or be killed by the watchdog while its tool call is still
+	// running here. Writing to the dead child's stdin then emits an async
+	// EPIPE on the socket; unhandled, it is an uncaughtException that takes pi
+	// down. Skip writes the child can no longer receive, and absorb the stream
+	// error for the race the check cannot see.
+	const send = (msg: unknown): void => {
+		if (childStdin.destroyed || !childStdin.writable) return;
+		childStdin.write(JSON.stringify(msg) + "\n");
+	};
+	childStdin.on("error", () => {});
 	let settled = false;
 
 	const kill = () => {
@@ -240,26 +251,22 @@ async function runProgram(
 			}
 			if (msg.type === "call") {
 				if (toolCalls >= MAX_TOOL_CALLS) {
-					childStdin.write(
-						JSON.stringify({ id: msg.id, ok: false, error: `ptc: tool call limit exceeded (${MAX_TOOL_CALLS})` }) + "\n",
-					);
+					send({ id: msg.id, ok: false, error: `ptc: tool call limit exceeded (${MAX_TOOL_CALLS})` });
 					return;
 				}
 				toolCalls++;
 				const reg = getPtcTool(msg.name);
 				if (!reg) {
-					childStdin.write(JSON.stringify({ id: msg.id, ok: false, error: `ptc: no tool registered as ${JSON.stringify(msg.name)}` }) + "\n");
+					send({ id: msg.id, ok: false, error: `ptc: no tool registered as ${JSON.stringify(msg.name)}` });
 					return;
 				}
 				Promise.resolve()
 					.then(() => reg.run(msg.args, ctx))
 					.then((value) => {
-						childStdin.write(JSON.stringify({ id: msg.id, ok: true, value: value ?? null }) + "\n");
+						send({ id: msg.id, ok: true, value: value ?? null });
 					})
 					.catch((err: unknown) => {
-						childStdin.write(
-							JSON.stringify({ id: msg.id, ok: false, error: err instanceof Error ? err.message : String(err) }) + "\n",
-						);
+						send({ id: msg.id, ok: false, error: err instanceof Error ? err.message : String(err) });
 					});
 			}
 		});
