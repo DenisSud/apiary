@@ -16,6 +16,7 @@
  *   - tool error propagation     → read ENOENT rejects inside the program
  *   - program error              → isError with the stack, output preserved
  *   - timeout                    → PTC_TIMEOUT_MS honored, isError
+ *   - dead child stdin           → late reply EPIPE absorbed, runtime survives
  *   - static import              → user module imports work (separate module)
  *   - syntax error diagnostics   → references user-program.mjs, file kept
  *   - program file lifecycle     → saved+reported every run, kept (never deleted)
@@ -233,6 +234,35 @@ test("timeout: PTC_TIMEOUT_MS honored", async () => {
 	} finally {
 		delete process.env.PTC_TIMEOUT_MS;
 	}
+});
+
+test("dead child stdin: late reply EPIPE absorbed, runtime survives", async () => {
+	const { ptc } = await setup();
+	// A tool that settles only after the child has closed its stdin read end:
+	// the parent's reply write then hits EPIPE. Unhandled, that error becomes
+	// an uncaughtException and takes the whole runtime down.
+	registerPtcTool("__epipe_gate", async () => {
+		await new Promise((r) => setTimeout(r, 150));
+		return "late";
+	});
+	process.env.PTC_TIMEOUT_MS = "700";
+	try {
+		const res = await runTool(
+			ptc,
+			`import { closeSync } from "node:fs";
+const p = __epipe_gate();
+closeSync(0); // close our stdin read end — the reply can never be delivered
+await p;`,
+		);
+		// The reply is undeliverable, so the program runs until the watchdog
+		// kills it; what matters is that the runtime is still here to say so.
+		assert(res.isError, "isError");
+		assert(res.content[0].text.includes("timed out"), `timed out — got ${res.content[0].text.slice(0, 200)}`);
+	} finally {
+		delete process.env.PTC_TIMEOUT_MS;
+	}
+	const after = await runTool(ptc, `print("alive");`);
+	assert(outputText(after).trim() === "alive", `runtime survived — got ${after.content[0].text}`);
 });
 
 test("static import: user module imports work, line numbers are user's own", async () => {
