@@ -14,11 +14,10 @@ all load.
 ```
 ├── package.json          # bun workspace root (service monorepo)
 ├── base/                 # the base pi package every agent loads (extensions, skills)
-├── registry/             # agent-usable packages: ptc, web-search, systemone, grilling, …
+├── registry/             # agent-usable packages: ptc, web-search, grilling, …
 ├── packages/connector/   # agent registry, launcher, bridge, the CLI wrappers (bin/)
 ├── packages/pi-manager/  # agent lifecycle: scaffold, read, update, archive, delete
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
-├── packages/systemone/  # System One decision client + shared config (local Kev)
 ├── packages/web/         # browser client served by the bridge
 ├── docs/                 # product, architecture, agents, deployment
 ├── deploy/               # service container: Dockerfile, build and run scripts
@@ -35,7 +34,7 @@ all load.
 | `docs/architecture.md` | the service map: pieces, state, contracts, boundaries |
 | `docs/agents.md` | what an agent is: identity, memory, ownership, commit→apply |
 | `docs/deployment.md` | the container: image, volume, external services |
-| `packages/systemone/README.md` | the decision layer: client, config, wire protocol |
+| `packages/auth/README.md` | provider login sessions and the bridge frame mapping |
 | `packages/connector/README.md` | the agent registry, launcher and bridge |
 | `packages/web/README.md` | the browser client: modules, data flow, rendering rules |
 | `packages/web/design/plan.html` | the web app's design reference (open it in a browser) |
@@ -62,22 +61,14 @@ gets; nothing else lives in it.
 ## Registry
 
 `registry/` holds packages an agent may install for itself: `ptc`,
-`web-search`, `systemone` (extensions) and `grilling`, `self-improvement`,
-`handoff` (skills). Each directory is a pi package; an agent declares it in
-its `settings.json` `packages` list and the service installs the union on
+`web-search` (extensions) and `grilling`, `self-improvement`, `handoff`
+(skills). Each directory is a pi package; an agent declares it in its
+`settings.json` `packages` list and the service installs the union on
 reload. The self-config skill points agents here; see `registry/README.md`.
 
 `web-search` expects a SearXNG instance (`SEARXNG_BASE_URL`, default
 `http://127.0.0.1:8888`) and the `trafilatura` + `pdftotext`/`pandoc` binaries
 for `web_fetch`. The devenv shell ships the extractors.
-
-`systemone` stays inert until `~/.pi/agent/systemone.json` exists; then it
-classifies guarded tool calls (`bash`, `ptc`) through a local System One
-endpoint, asking whether the call is dangerous and whether the user asked for
-it — Kev serves one:
-`uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b --port 8009`.
-It is a policy layer above the deterministic security guard, fail-open by
-default. See `registry/systemone/README.md`.
 
 ## Agents
 

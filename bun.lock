@@ -34,10 +34,6 @@
         "@earendil-works/pi-coding-agent": "0.87.1",
       },
     },
-    "packages/systemone": {
-      "name": "@pi-bots/systemone",
-      "version": "0.0.0",
-    },
     "packages/web": {
       "name": "@pi-bots/web",
       "version": "0.0.0",
@@ -172,8 +168,6 @@
     "@pi-bots/connector": ["@pi-bots/connector@workspace:packages/connector"],
 
     "@pi-bots/pi-manager": ["@pi-bots/pi-manager@workspace:packages/pi-manager"],
-
-    "@pi-bots/systemone": ["@pi-bots/systemone@workspace:packages/systemone"],
 
     "@pi-bots/web": ["@pi-bots/web@workspace:packages/web"],
 

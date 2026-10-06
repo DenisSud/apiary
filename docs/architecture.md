@@ -9,11 +9,11 @@ the interface reference, the code is the how.
 | piece | role |
 |---|---|
 | `base/` | pi package every bot loads: extensions `security`, `sysinfo`, `memory`, `mem0`; skills `self-config`, `skill-authoring` |
-| `registry/` | optional per-agent packages: `ptc`, `web-search`, `systemone`, skills (`grilling`, `self-improvement`, `handoff`) |
+| `registry/` | optional per-agent packages: `ptc`, `web-search`, skills (`grilling`, `self-improvement`, `handoff`) |
 | `packages/pi-manager` | bot lifecycle: scaffold, read, update, archive, delete; reconciler; admin settings |
 | `packages/connector` | bot registry, launcher, bridge (HTTP API + WS relay), `pi-bot` CLI, web serving |
 | `packages/auth` | provider login sessions over pi's `ModelRuntime` |
-| `packages/systemone` | System One decision client and shared config |
+| `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
 | `packages/web` | browser client served by the bridge |
 | `deploy/` | the container image and run scripts; the memory service stack (`deploy/mem0`) |
 | pi fork (`$PI_SOURCE_DIR`) | the experimental server/client stack and service patches |

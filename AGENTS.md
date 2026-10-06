@@ -72,11 +72,10 @@ agent dirs and the local rules overlay — not in the base.
 | path | what |
 |---|---|
 | `base/` | the base pi package every agent loads — extensions: security, sysinfo, memory, mem0; skills: skill-authoring, self-config |
-| `registry/` | agent-usable pi packages an agent may declare (ptc, web-search, systemone, grilling, self-improvement, handoff) |
+| `registry/` | agent-usable pi packages an agent may declare (ptc, web-search, grilling, self-improvement, handoff) |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
 | `packages/connector/` | bot registry, launcher, bridge — `pi-bot`, `pi-bots-web` (`bin/`) |
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
-| `packages/systemone/` | System One decision client + shared config (tev/Kev) |
 | `packages/web/` | browser client served by the bridge (vanilla TS, esbuild) |
 | `deploy/` | service container image: Dockerfile, build and run scripts (issues #18, #36) |
 | `docs/` | product spec, architecture, agents, deployment |
@@ -94,7 +93,6 @@ agent dirs and the local rules overlay — not in the base.
 - `registry/README.md` — the package registry: policy, package list, install path.
 - `packages/pi-manager/README.md` — bot lifecycle API, scaffold shape, commit→apply, reconciler, archive semantics.
 - `packages/auth/README.md` — provider login sessions and the bridge frame mapping.
-- `packages/systemone/README.md` — the decision layer: System One client, config, wire protocol.
 - `packages/connector/README.md` — the connector: model, API, launcher, bridge contract.
 - `packages/web/README.md` — the web client: modules, data flow, rendering rules.
 - `packages/web/design/plan.html` — the design reference (open in a browser).
@@ -185,7 +183,6 @@ not leave scratch files in the repo.
 
 - Pi-manager: `cd packages/pi-manager && node --test test/*.test.ts`.
 - Auth: `cd packages/auth && node --test test/*.test.ts`.
-- Decision: `cd packages/systemone && node --test test/*.test.ts`.
 - Connector: `cd packages/connector && node --test test/*.test.ts`.
 - Web: `bun run test -w packages/web` (pure core, no DOM).
 - Extensions: `base/extensions/<name>/test/run.sh harness` (no network); registry
