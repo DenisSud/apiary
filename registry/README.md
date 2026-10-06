@@ -11,7 +11,6 @@ is the install — the service installs the union on reload.
 |---|---|---|
 | `ptc` | extension | programmatic tool calling |
 | `web-search` | extension | `web_search` / `web_fetch` via a local SearXNG + trafilatura/pdftotext |
-| `systemone` | extension | decision-model middleware: pre-tool risk guard through a local System One endpoint (Kev) |
 | `grilling` | skill | stress-test a plan, one question at a time |
 | `self-improvement` | skill | turn repeated work into a task, skill or automation |
 | `handoff` | skill | write a context handoff between sessions |
