@@ -24,7 +24,9 @@ services:
       retries: 10
 
   mem0:
-    build: ./app
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     image: mem0-server:local
     container_name: mem0
     restart: unless-stopped
