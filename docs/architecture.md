@@ -15,7 +15,7 @@ the interface reference, the code is the how.
 | `packages/auth` | provider login sessions over pi's `ModelRuntime` |
 | `packages/systemone` | System One decision client and shared config |
 | `packages/web` | browser client served by the bridge |
-| `deploy/` | the container image and run scripts; the memory service stack (`deploy/mem0`) |
+| `deploy/` | the container image and run scripts |
 | pi fork (`$PI_SOURCE_DIR`) | the experimental server/client stack and service patches |
 
 An agent is a complete pi agent dir under `$PI_BOTS_HOME`, its own git repo.
