@@ -42,11 +42,12 @@ The image is disposable; updates replace it, the volume moves.
 
 ## External services
 
-- **mem0** — semantic memory. The service stack is `deploy/mem0/` (its own
-  README); consumers take `MEM0_BASE_URL`, `MEM0_API_KEY` and the gate
-  variables at run time. Keys are injected, never baked in.
-- **Ollama / System One** — decision models for memory filtering and guards;
-  configured per consumer (#35).
+- **mem0** — semantic memory, run as its own service in its own repo
+  (`DenisSud/mem0`; the stack is `deploy/` there: compose, image, `/configure`
+  replay, keys). Consumers take the base URL, a key and the `user_id` they
+  write and read under; the service filters memories itself, on ingest and on
+  output, so no consumer needs a decision model or its own copy of the server.
+  Keys are injected at run time, never baked in.
 
 ## Decisions
 

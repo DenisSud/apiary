@@ -52,11 +52,13 @@ deployments without per-agent settings (the fleet container).
 
 ## Status (2026-10-02)
 
-Live as an experiment against the self-hosted service (`deploy/mem0/`):
-capture, recall, tools, the gate and the relevance filter run. Extraction
-currently runs server-side on a local model. Known gaps (top_k, dedup ≥1000,
-redaction holes, recall-block accumulation) are a checklist in #34 — fix as
-part of owning and stripping the stack.
+Live as an experiment against the self-hosted service (its own repo,
+`DenisSud/mem0`; the stack lives in `deploy/` there): capture, recall, tools,
+the gate and the relevance filter run. Extraction runs server-side on a local
+model, and the service filters on ingest and output itself — which makes the
+extension's own gate and recall filter redundant, so they come out in the
+rework. Known gaps (top_k, dedup ≥1000, redaction holes, recall-block
+accumulation) are a checklist in #34.
 
 ## Layout
 
