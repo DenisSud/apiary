@@ -146,7 +146,8 @@ in
         cd "$DEVENV_ROOT"
         shellcheck -S warning \
           packages/connector/bin/pi-bot packages/connector/bin/pi-bots-web \
-          base/extensions/*/test/run.sh registry/*/test/run.sh
+          base/extensions/*/test/run.sh registry/*/test/run.sh \
+          deploy/mem0/*.sh
         echo "lint clean"
       '';
     };
