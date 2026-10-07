@@ -45,8 +45,8 @@ agent dirs and the local rules overlay — not in the base.
 - Never commit unless asked. When asked, stage explicit paths — only files you
   changed in this session.
 - Never print, copy, or paste secret values. Credentials are reached through
-  the `security` extension's secrets profiles (`bash { secrets: "<profile>" }`,
-  ptc `secrets_sh`); keep them out of code, docs, notes and commits.
+  the `security` extension's secrets profiles (`bash { secrets: "<profile>" }`);
+  keep them out of code, docs, notes and commits.
 
 ## How to work
 
@@ -71,8 +71,8 @@ agent dirs and the local rules overlay — not in the base.
 
 | path | what |
 |---|---|
-| `base/` | the base pi package every agent loads — extensions: security, sysinfo, memory, mem0; skills: skill-authoring, self-config |
-| `registry/` | agent-usable pi packages an agent may declare (ptc, web-search, grilling, self-improvement, handoff) |
+| `base/` | the base pi package every agent loads — extensions: mem0; skills: skill-authoring, self-config |
+| `registry/` | agent-usable pi packages an agent may declare (web-search, grilling, handoff) |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
 | `packages/connector/` | bot registry, launcher, bridge — `pi-bot`, `pi-bots-web` (`bin/`) |
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
@@ -150,34 +150,25 @@ source checkout (`$PI_SOURCE_DIR`).
 Run `check` before opening a PR. It does not cover tests that need network
 or a live bot; for those follow the package READMEs.
 
-## ptc: fast debugging and bulk work
+## codemode: fast debugging and bulk work
 
-`ptc` runs a Node ESM program in a child process with the tools as global
-async functions (`read`, `grep`, `find`, `sh`, `secrets_sh`, `web_search`,
-`web_fetch`). Only what the program prints enters the context, which makes it
-the fastest way to work in this repo:
+`codemode` runs a JavaScript program whose nested tool calls never enter the
+context — only the program's output does, which makes it the fastest way to
+work in this repo:
 
-- **Exercise real code.** Node 24 strips types, so import the repo's modules
-  directly and call them:
-
-  ```js
-  const { resolveAttach } = await import("/absolute/path/to/pi-bots/packages/connector/src/launcher.ts");
-  ```
-
-  (Inline `await import()` is fine inside a ptc program; it is banned in the
-  repo's own source, where imports stay top-level.)
-- **Bulk reads and filtering.** Fan out `read`/`grep`/`find` with
-  `Promise.all` and print only the summary.
-- **Run and parse.** `sh({ command: "cd packages/connector && node --test test/*.test.ts" })`,
-  then parse stdout; start the bridge and `fetch("/api/bots")`; drive the UI
-  through a Chromium CDP script from `sh`.
+- **Bulk reads and filtering.** Fan out `tools.read` with `Promise.all`, or
+  `tools.bash({ command: "grep -rn …" })`, and print only the summary.
+- **Run and parse.** `tools.bash` returns `{ output, truncated, exit_code,
+  wall_time_seconds }`; `await tools.bash({ command: "cd packages/connector && node --test test/*.test.ts" })`,
+  then parse stdout; start the bridge and `tools.bash({ command: "curl 127.0.0.1:8787/api/bots" })`;
+  drive the UI through a Chromium CDP script from `tools.bash`.
 - **Data wrangling.** JSON manifests, snapshot dumps, issue lists.
-- **Secrets.** `secrets_sh({ profile: "forgejo", command })` for API calls —
+- **Secrets.** `tools.bash({ command, secrets: "forgejo" })` for API calls —
   never read or print the values.
 
-ptc programs use top-level `await` and `import` (no `require`). Write
-throwaway scripts to `/tmp`, or use `ptc { path }` to rerun a saved one; do
-not leave scratch files in the repo.
+Scripts run in a sandbox (no Node, no filesystem, no network), so anything
+that touches the real machine goes through `tools.bash`. Nested calls run
+through the tool pipeline, so the security guard applies to each one.
 
 ## Verification
 

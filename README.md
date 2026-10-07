@@ -14,7 +14,7 @@ all load.
 ```
 ├── package.json          # bun workspace root (service monorepo)
 ├── base/                 # the base pi package every agent loads (extensions, skills)
-├── registry/             # agent-usable packages: ptc, web-search, grilling, …
+├── registry/             # agent-usable packages: web-search, grilling, handoff
 ├── packages/connector/   # agent registry, launcher, bridge, the CLI wrappers (bin/)
 ├── packages/pi-manager/  # agent lifecycle: scaffold, read, update, archive, delete
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
@@ -60,17 +60,17 @@ gets; nothing else lives in it.
 
 ## Registry
 
-`registry/` holds packages an agent may install for itself: `ptc`,
-`web-search` (extensions) and `grilling`, `self-improvement`, `handoff`
-(skills). Each directory is a pi package; an agent declares it in its
-`settings.json` `packages` list and the service installs the union on
+`registry/` holds packages an agent may install for itself: `web-search` (an
+extension) and `grilling`, `handoff` (skills). Each directory is a pi
+package; an agent declares it in its `settings.json` `packages` list and the
+service installs the union on
 reload. The self-config skill points agents here; see `registry/README.md`.
 
 `web-search` expects a SearXNG instance (`SEARXNG_BASE_URL`, default
 `http://127.0.0.1:8888`) and the `trafilatura` + `pdftotext`/`pandoc` binaries
 for `web_fetch`. The devenv shell ships the extractors.
 
-## Agents
+`web-search` expects a SearXNG instance## Agents
 
 ```bash
 pi-bot <name>        # run an agent
