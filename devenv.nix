@@ -7,9 +7,9 @@
 }:
 
 let
-  # web_fetch extractors. The web-search test runner falls back to a bare
-  # `nix shell nixpkgs#…` when these are missing; shipping them here keeps the
-  # shell self-contained so the harness runs without that detour.
+  # web_fetch extractors (HTML → markdown, PDF → text), the same ones the
+  # deploy image installs, so an agent package that does web_fetch works in
+  # the dev shell too.  This does not include anything project logic depends on.
   extractors = with pkgs; [
     python3Packages.trafilatura # HTML
     poppler-utils # pdftotext
@@ -25,7 +25,7 @@ in
   # Deliberately NOT languages.javascript: it prepends node_modules/.bin to
   # PATH, where bun's auto-installed peer @earendil-works/pi-coding-agent
   # shadows the system `pi`. That npm bundle has no monorepo store layout, so
-  # base/extensions/*/test/run.sh can no longer resolve the pi store. Plain
+  # the installed pi would be the wrong one. Plain
   # packages keep the installed pi authoritative; the install task below
   # still keeps node_modules in sync with bun.lock.
   packages = [
@@ -57,38 +57,12 @@ in
   # `devenv info` lists these; the shell puts them on PATH.
   scripts = {
     check = {
-      description = "All tests: package suites + every extension harness";
+      description = "All tests: the package suites";
       exec = ''
         set -euo pipefail
         cd "$DEVENV_ROOT"
         echo "== connector tests =="
-        bun run test
-        exec test-ext
-      '';
-    };
-
-    test-ext = {
-      description = "Extension harnesses: all, or `test-ext <name…>` for some";
-      exec = ''
-        set -euo pipefail
-        cd "$DEVENV_ROOT"
-        runners=()
-        if [ "$#" -gt 0 ]; then
-          for name in "$@"; do
-            if [ -d "base/extensions/$name" ]; then
-              runners+=("base/extensions/$name/test/run.sh")
-            else
-              runners+=("registry/$name/test/run.sh")
-            fi
-          done
-        else
-          runners=(base/extensions/*/test/run.sh registry/*/test/run.sh)
-        fi
-        for runner in "''${runners[@]}"; do
-          [ -x "$runner" ] || continue
-          echo "== $runner =="
-          "$runner" harness
-        done
+        exec bun run test
       '';
     };
 
@@ -97,14 +71,6 @@ in
       exec = ''
         cd "$DEVENV_ROOT"
         exec bun run test
-      '';
-    };
-
-    test-web-search-live = {
-      description = "web-search live test (needs the local SearXNG service)";
-      exec = ''
-        cd "$DEVENV_ROOT"
-        exec registry/web-search/test/run.sh live
       '';
     };
 
@@ -145,8 +111,7 @@ in
       exec = ''
         cd "$DEVENV_ROOT"
         shellcheck -S warning \
-          packages/connector/bin/pi-bot packages/connector/bin/pi-bots-web \
-          base/extensions/*/test/run.sh registry/*/test/run.sh
+          packages/connector/bin/pi-bot packages/connector/bin/pi-bots-web
         echo "lint clean"
       '';
     };
@@ -164,7 +129,7 @@ in
           pi_version="$("$pi_bin" --version 2>/dev/null | head -n1)"
           echo "pi         $pi_version  ($pi_bin)"
         else
-          echo "pi         MISSING — base/extensions/*/test/run.sh resolves the pi store from it"
+          echo "pi         MISSING — running a bot needs it"
         fi
 
         src="''${PI_SOURCE_DIR:-$HOME/dev/pi}"
@@ -201,18 +166,14 @@ in
 
   enterShell = ''
     echo "pi-bots devenv — node $(node --version), bun $(bun --version)"
-    echo "commands: check · test-ext · build · web · bot <name> · doctor   (devenv info)"
+    echo "commands: check · build · web · bot <name> · doctor   (devenv info)"
   '';
 
-  # `devenv test` — connector suite + every extension harness.
+  # `devenv test` — the package suites.
   enterTest = ''
     set -euo pipefail
     cd "$DEVENV_ROOT"
     bun run test
-    for runner in base/extensions/*/test/run.sh; do
-      echo "== $runner =="
-      "$runner" harness
-    done
   '';
 
   # Full option reference: https://devenv.sh/reference/options/

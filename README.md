@@ -1,20 +1,21 @@
 # pi-bots
 
-The pi-bots service: the base pi package every agent loads, the registry of
-optional packages an agent can pick up, and the service that runs them —
-connector, agent lifecycle, web client, deployment.
+The pi-bots service: agent lifecycle, the connector, the web client and the
+deployment that run a fleet of pi agents.
 
 Agents do **not** live here. An agent is a complete pi agent dir (its own
 persona, skills, extensions, settings, sessions, memory) in its own local git
-repo under `$PI_BOTS_HOME` (default `~/Bots`). This repo is the one thing they
-all load.
+repo under `$PI_BOTS_HOME` (default `~/Bots`). The agent-side pi packages
+(extensions and skills) are not in this repo either: the base package and the
+registry below are empty placeholders for now, and a deployment installs its
+packages from a pi package of its own.
 
 ## Layout
 
 ```
 ├── package.json          # bun workspace root (service monorepo)
-├── base/                 # the base pi package every agent loads (extensions, skills)
-├── registry/             # agent-usable packages: web-search, grilling, handoff
+├── base/                 # the pi package floor every agent loads — empty for now
+├── registry/             # packages an agent may install — empty for now
 ├── packages/connector/   # agent registry, launcher, bridge, the CLI wrappers (bin/)
 ├── packages/pi-manager/  # agent lifecycle: scaffold, read, update, archive, delete
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
@@ -39,38 +40,24 @@ all load.
 | `packages/web/README.md` | the browser client: modules, data flow, rendering rules |
 | `packages/web/design/plan.html` | the web app's design reference (open it in a browser) |
 | `.pi/skills/` | project skills (frontend design, Chrome DevTools) |
-| `registry/README.md` | the package registry: policy and package list |
+| `registry/README.md` | the package registry: empty for now, install path |
 
 ## Base
 
-The base package lives in `base/`: a pi package manifest with `extensions/`
-and `skills/`. Every agent loads it — it is the enforced floor, not an
-optional install.
-
-| extension | what it does |
-|---|---|
-| `security` | vault-backed secrets profiles, output redaction, credential-store guards |
-| `sysinfo` | machine facts as the `<system_info>` prompt section |
-| `memory` | SOUL.md as the prompt preamble, BEHAVIOR.md as the behavior section, shared and per-agent notes, auto-committed writes |
-| `mem0` | automatic semantic memory: per-input recall, buffered capture, self-hosted server |
-
-Skills: `skill-authoring` (how to write skills well) and `self-config` (the
-setup interview and self-configuration workflow). The base is what every agent
-gets; nothing else lives in it.
+`base/` is a pi package: a manifest (`package.json`) with an `extensions/` and
+a `skills/` directory. Every agent loads it — it is the enforced floor, not an
+optional install. Both directories are empty for now, so the floor is the tool
+floor at runtime and the content comes from the deployment's own package.
 
 ## Registry
 
-`registry/` holds packages an agent may install for itself: `web-search` (an
-extension) and `grilling`, `handoff` (skills). Each directory is a pi
-package; an agent declares it in its `settings.json` `packages` list and the
-service installs the union on
-reload. The self-config skill points agents here; see `registry/README.md`.
+`registry/` is the directory the service exports as `PI_REGISTRY_DIR`: where a
+curated package an agent may install for itself would live. It holds no
+packages for now. Adding one is declaring it in the bot's `settings.json`
+`packages` list — a path under `$PI_REGISTRY_DIR`, any other path, or a git
+URL — and the service installs the union on reload. See `registry/README.md`.
 
-`web-search` expects a SearXNG instance (`SEARXNG_BASE_URL`, default
-`http://127.0.0.1:8888`) and the `trafilatura` + `pdftotext`/`pandoc` binaries
-for `web_fetch`. The devenv shell ships the extractors.
-
-`web-search` expects a SearXNG instance## Agents
+## Agents
 
 ```bash
 pi-bot <name>        # run an agent

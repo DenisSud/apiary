@@ -71,8 +71,8 @@ agent dirs and the local rules overlay — not in the base.
 
 | path | what |
 |---|---|
-| `base/` | the base pi package every agent loads — extensions: mem0; skills: skill-authoring, self-config |
-| `registry/` | agent-usable pi packages an agent may declare (web-search, grilling, handoff) |
+| `base/` | the pi package floor every agent loads — empty for now (no extensions, no skills) |
+| `registry/` | `$PI_REGISTRY_DIR`: where an installable agent package would live — empty for now |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
 | `packages/connector/` | bot registry, launcher, bridge — `pi-bot`, `pi-bots-web` (`bin/`) |
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
@@ -90,7 +90,7 @@ agent dirs and the local rules overlay — not in the base.
 - `docs/deployment.md` — the container: image, volume, external services.
 - Docs state ideas and interfaces; the how lives in code, history in git, specs
   of record in the issue tracker. Never park design records here.
-- `registry/README.md` — the package registry: policy, package list, install path.
+- `registry/README.md` — the package registry: empty for now, install path.
 - `packages/pi-manager/README.md` — bot lifecycle API, scaffold shape, commit→apply, reconciler, archive semantics.
 - `packages/auth/README.md` — provider login sessions and the bridge frame mapping.
 - `packages/connector/README.md` — the connector: model, API, launcher, bridge contract.
@@ -134,18 +134,16 @@ fix the fork and the call sites here together.
 
 | command | what |
 |---|---|
-| `check` | package suites (pi-manager, auth, decision, connector, web) and every extension harness (the pre-commit gate) |
-| `test-ext [name…]` | extension harnesses only |
+| `check` | package suites (pi-manager, auth, connector, web) — the pre-commit gate |
 | `test-connector` | `node --test` for `packages/connector` |
 | `build` | bundle `packages/web/dist` |
 | `web` / `web-watch` | serve the app + bridge; rebuild on change |
 | `bot <name>` | this checkout's `pi-bot` |
 | `lint` / `doctor` | shellcheck the entrypoints; check pi, checkout, bots root, SearXNG |
 
-`devenv up` builds and serves; `devenv test` runs `check`. Two host
-dependencies stay outside the devenv on purpose: the `pi` binary (extension
-test runners resolve the installed store from `command -v pi`) and the pi
-source checkout (`$PI_SOURCE_DIR`).
+`devenv up` builds and serves; `devenv test` runs `check`. The pi source
+checkout (`$PI_SOURCE_DIR`) stays outside the devenv on purpose: bots and the
+web bundle need it.
 
 Run `check` before opening a PR. It does not cover tests that need network
 or a live bot; for those follow the package READMEs.
@@ -176,8 +174,6 @@ through the tool pipeline, so the security guard applies to each one.
 - Auth: `cd packages/auth && node --test test/*.test.ts`.
 - Connector: `cd packages/connector && node --test test/*.test.ts`.
 - Web: `bun run test -w packages/web` (pure core, no DOM).
-- Extensions: `base/extensions/<name>/test/run.sh harness` (no network); registry
-  packages: `registry/<name>/test/run.sh harness`.
 - UI changes: follow `.pi/skills/frontend-design/SKILL.md`; match the check
   to the change (pure-core tests for logic, the real app for layout or state).
 - Bot sessions: go through the connector, not the stock in-process path.

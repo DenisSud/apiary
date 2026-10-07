@@ -8,8 +8,8 @@ the interface reference, the code is the how.
 
 | piece | role |
 |---|---|
-| `base/` | pi package every bot loads: extensions `mem0`; skills `self-config`, `skill-authoring` |
-| `registry/` | optional per-agent packages: `web-search`, skills (`grilling`, `handoff`) |
+| `base/` | pi package every bot loads: the floor. Empty for now — no extensions, no skills |
+| `registry/` | `$PI_REGISTRY_DIR`: where an installable package would live. Empty for now |
 | `packages/pi-manager` | bot lifecycle: scaffold, read, update, archive, delete; reconciler; admin settings |
 | `packages/connector` | bot registry, launcher, bridge (HTTP API + WS relay), `pi-bot` CLI, web serving |
 | `packages/auth` | provider login sessions over pi's `ModelRuntime` |
@@ -27,7 +27,8 @@ See `docs/agents.md` for what it is and what it owns.
    commits `Scaffold <name>` and writes the `.setup` marker.
 2. **Setup** — the web client sends `/skill:self-config`; the agent interviews
    the user and commits exactly `init`, which clears `.setup` and writes
-   `.apply`.
+   `.apply`. The `self-config` skill is the deployment's: this repo ships no
+   skills for now, so onboarding needs one installed (see `docs/agents.md`).
 3. **Attach** — a client resolves the bot: a pending apply runs (stop →
    reconcile → clear), the server starts from the pi checkout if needed, and
    the client attaches over a unix socket.

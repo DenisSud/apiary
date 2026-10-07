@@ -20,20 +20,20 @@ machine-wide.
 |---|---|---|
 | `SOUL.md` | system prompt preamble (`customPrompt`) | agent + user |
 | `BEHAVIOR.md` | `<behavior>` section: working rules | agent + user |
-| machine facts | `<system_info>` section (`sysinfo`) | service |
 
 Both files are plain Markdown; HTML comments are stripped and each is capped
 at 6000 chars. SOUL is who the agent is; BEHAVIOR is how it works. There is
-no managed block, and no `SYSTEM.md` / `APPEND_SYSTEM.md`.
+no managed block, and no `SYSTEM.md` / `APPEND_SYSTEM.md`. Other prompt
+sections (machine facts, memory) come from the extensions the bot installs;
+none ship in this repo for now.
 
 ## Memory
 
-- **Identity** (above) is always in the prompt.
-- **Curated notes** (`base/extensions/memory/`): agent-private and shared
-  notes, Markdown with frontmatter, generated indexes, search/read/write
-  tools. Deliberate, versioned.
-- **Automatic memory** (`base/extensions/mem0/`): recall per input, buffered
-  and filtered capture. Retrieval, not files.
+The bot's memory lives in its agent dir and in the packages it installs.
+Notes (curated, versioned, with search/read/write tools) and automatic
+semantic memory (per-input recall, buffered capture) are extensions a
+deployment supplies; the tools and the storage belong to the bot, not to the
+service.
 
 ## Ownership
 
@@ -63,9 +63,9 @@ in the UI or by the agent.
 
 ## Registry
 
-`registry/` (or `$PI_REGISTRY_DIR`) holds curated packages an agent may
-declare in `settings.json`; declaring is installing. See
-`registry/README.md`.
+`registry/` (or `$PI_REGISTRY_DIR`) is where a curated package an agent may
+declare in `settings.json` would live; it holds none for now. Declaring a
+package is installing it. See `registry/README.md`.
 
 ## Extensions
 

@@ -1,28 +1,20 @@
 # registry — the package registry
 
-Packages an agent can install for itself: extensions and skills that are not
-part of the base but are curated enough to share. Each direct subdirectory is
-a pi package; declaring its path in the bot's `settings.json` `packages` list
-is the install — the service installs the union on reload.
+Where a curated pi package an agent may install for itself would live. The
+service exports this directory to every bot as `PI_REGISTRY_DIR`.
 
-## Packages
-
-| package | kind | what it does |
-|---|---|---|
-| `web-search` | extension | `web_search` / `web_fetch` via a local SearXNG + trafilatura/pdftotext |
-| `grilling` | skill | stress-test a plan, one question at a time |
-| `self-improvement` | skill | turn repeated work into a task, skill or automation |
-| `handoff` | skill | write a context handoff between sessions |
+**It holds no packages for now.** Nothing agent-side ships in this repo: the
+extensions and skills a deployment runs live in that deployment's own pi
+package. Add an entry here when the service itself should curate one.
 
 ## How agents use it
 
-The service sets `PI_REGISTRY_DIR` for every bot; the stable path to a package
-is `$PI_REGISTRY_DIR/<name>`. To add one, the agent (or the user) edits the
-bot's `settings.json`:
+The stable path to a package is `$PI_REGISTRY_DIR/<name>`. To add one, the
+agent (or the user) edits the bot's `settings.json`:
 
 ```json
 {
-  "packages": ["<base package path>", "/abs/path/from/$PI_REGISTRY_DIR/web-search"]
+  "packages": ["<base package path>", "/abs/path/from/$PI_REGISTRY_DIR/<name>"]
 }
 ```
 
@@ -30,9 +22,6 @@ and commits. The post-commit apply restarts the server and the reconciler
 installs the declared union. `PI_REGISTRY_DIR` exists because the literal path
 differs between deployments (a checkout here, a read-only mount in the
 container); nothing should hard-code it.
-
-The `self-config` skill in the base package is the standing procedure for
-this: discuss the change, edit, commit, roll back via git.
 
 ## Model
 
