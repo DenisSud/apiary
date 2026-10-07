@@ -100,12 +100,14 @@ agent dirs and the local rules overlay — not in the base.
 - `.pi/skills/frontend-design/SKILL.md` — the rules for UI work.
 - `.pi/skills/chrome-devtools-cli/SKILL.md` — driving a real browser from the
   terminal (upstream Chrome DevTools skill; NixOS setup in its `references/local.md`).
-- Forgejo `DenisSud/pi-bots` issues #1–#36 — the service backlog; labels
-  `pkg:*`, `area:*` and `research`, milestones `Service v1` and `Later`.
+- GitHub `DenisSud/pi-bots` issues — the service backlog; labels `pkg:*`,
+  `area:*`, `research`, `ready-for-agent`; milestones `durable integration`,
+  `v0`, `v0-alpha`, `v0-beta`, `v1`. Pre-2026-10-08 history (old numbering)
+  stays in the frozen Forgejo archive at `git.sudakov.site/DenisSud/pi-bots`.
 
 ## The pi source monorepo
 
-The `pi/` submodule is our fork of `earendil-works/pi` (Forgejo `DenisSud/pi`).
+The `pi/` submodule is our fork of `earendil-works/pi` (GitHub `DenisSud/pi`).
 The connector and the web client depend on its experimental client/server
 stack, which is not published. The submodule pins one commit; the fork's own
 `AGENTS.md` governs work inside it, and the branch it lives on is the fork's
@@ -177,8 +179,11 @@ work in this repo:
   then parse stdout; start the bridge and `tools.bash({ command: "curl 127.0.0.1:8787/api/bots" })`;
   drive the UI through a Chromium CDP script from `tools.bash`.
 - **Data wrangling.** JSON manifests, snapshot dumps, issue lists.
-- **Secrets.** `tools.bash({ command, secrets: "forgejo" })` for API calls —
-  never read or print the values.
+- **GitHub.** Issue, label and PR operations go through the authenticated
+  `gh` CLI (`gh issue …`, `gh api …`).
+- **Secrets.** `tools.bash({ command, secrets: "<profile>" })` injects a
+  profile's credentials as environment variables — never read or print the
+  values.
 
 Scripts run in a sandbox (no Node, no filesystem, no network), so anything
 that touches the real machine goes through `tools.bash`. Nested calls run
@@ -197,10 +202,12 @@ through the tool pipeline, so the security guard applies to each one.
   `docker exec pi-bots pi-bot new smoke && docker exec pi-bots pi-bot resolve smoke`
   and `curl 127.0.0.1:8787/api/bots`. See `docs/deployment.md`.
 
-## Git and Forgejo
+## Git and GitHub
 
 Trunk-based: `main` is the only long-lived branch and is protected — changes
-reach it only through a pull request on Forgejo, never a direct push.
+reach it only through a pull request on GitHub, never a direct push. `origin`
+(`github.com/DenisSud/pi-bots`) is the working remote; the `forgejo` remote is
+a frozen pre-migration archive — never push to it.
 
 - Sizable work: a branch per feature (`feat/<slug>` or `<area>/<slug>`),
   branched from `main`, pushed, PR'd into `main`, linked to its work thread

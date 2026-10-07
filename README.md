@@ -165,4 +165,4 @@ one-time job per checkout:
 
 Run `check` before opening a PR. `main` is protected: branch per feature (or
 a short-lived fix branch) off `main`, push, and open the pull request on
-Forgejo.
+GitHub.
