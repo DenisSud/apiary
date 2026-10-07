@@ -1,3 +1,3 @@
 [submodule "pi"]
 	path = pi
-	url = ssh://git@git.sudakov.site:2223/DenisSud/pi.git
+	url = https://github.com/DenisSud/pi.git
