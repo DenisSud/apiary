@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { assertBotName } from "@pi-bots/pi-manager";
 
 // The agents root, bot name rules and shared agent dir belong to pi-manager;
@@ -39,9 +40,11 @@ export function lockPath(name: string): string {
   return join(locksDir(), `${assertBotName(name)}.lock`);
 }
 
-// The pi source checkout that runs the experimental server and client.
+// The pi source checkout that runs the experimental server and client: the
+// `pi/` submodule of this repo. PI_SOURCE_DIR overrides it for a separate
+// checkout, as the container does (the image bakes one at /opt/pi).
 export function sourceDir(): string {
-  return process.env.PI_SOURCE_DIR ?? join(homedir(), "dev", "pi");
+  return process.env.PI_SOURCE_DIR ?? resolve(fileURLToPath(new URL("../../../pi", import.meta.url)));
 }
 
 export function routesDir(): string {

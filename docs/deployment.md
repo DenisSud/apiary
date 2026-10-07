@@ -6,13 +6,13 @@ in #18 and self-host completeness in #36.
 
 ## Image
 
-`deploy/Dockerfile` builds `pi-bots:local` from two checkouts:
+`deploy/Dockerfile` builds `pi-bots:local` from two trees:
 
 - this repo at `/opt/pi-bots` (dependencies installed, web bundle built);
 - the pi checkout at `/opt/pi` (`PI_SOURCE_DIR`) — bot servers run from it,
   so it must carry its generated model catalogs (`npm run hydrate-model-data`
   in `packages/ai` once per checkout; `build.sh` refuses to build without
-  them).
+  them). `build.sh` takes the `pi/` submodule by default.
 
 node 24 + pinned bun; the image trees are root-owned (the container runs
 read-only). A system git identity is baked in, so scaffold and notes commits

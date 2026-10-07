@@ -18,9 +18,9 @@ packages/connector/bin/pi-bots-web  # http://127.0.0.1:8787
 ```
 
 In a devenv shell: `build`, `web`, `web-watch` (rebuild on change), `test`.
-`build.mjs` needs the pi source checkout (`PI_SOURCE_DIR`, default `~/dev/pi`):
-`@pi/fork/*` imports are source modules there, and the pi packages are mapped
-to the built copies this repo depends on. It also copies `index.html`,
+`build.mjs` needs the pi source checkout (`PI_SOURCE_DIR`, default the `pi/`
+submodule): `@pi/fork/*` imports are source modules there, and the pi packages
+are mapped to the built copies this repo depends on. It also copies `index.html`,
 `style.css` and the blobatar CSS into `dist/`.
 
 ## Files

@@ -16,6 +16,7 @@ packages from a pi package of its own.
 ├── package.json          # bun workspace root (service monorepo)
 ├── base/                 # the pi package floor every agent loads — empty for now
 ├── registry/             # packages an agent may install — empty for now
+├── pi/                   # submodule: our pi fork (server runtime + service patches)
 ├── packages/connector/   # agent registry, launcher, bridge, the CLI wrappers (bin/)
 ├── packages/pi-manager/  # agent lifecycle: scaffold, read, update, archive, delete
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
@@ -145,16 +146,22 @@ Tasks are devenv scripts, all listed by `devenv info`:
 
 `devenv up` builds the web app and serves it; `devenv test` runs `check`.
 
-Two host dependencies stay outside the devenv on purpose:
+The devenv deliberately avoids `languages.javascript`, which prepends
+`node_modules/.bin` to PATH: bun's auto-installed peer `pi-coding-agent` would
+shadow the installed `pi` binary there. Plain packages keep the installed pi
+authoritative; `doctor` reports its version.
 
-- **`pi`** — the extension test runners resolve the installed pi store from
-  `command -v pi`, so tests run against the same pi the agents run. The devenv
-  deliberately avoids `languages.javascript`, which prepends
-  `node_modules/.bin` to PATH — bun's auto-installed peer `pi-coding-agent`
-  would shadow the system binary there and the runners could not resolve a
-  monorepo store. `doctor` reports the version in use.
-- **the pi source checkout** — agents are spawned from `$PI_SOURCE_DIR`
-  (default `~/dev/pi`) and the web bundle resolves `@pi/fork/*` there.
+The pi source checkout is the `pi/` submodule. Agents are spawned from
+`$PI_SOURCE_DIR` (default: the submodule) and the web bundle resolves
+`@pi/fork/*` there. Its dependencies and generated model catalogs are a
+one-time job per checkout:
+
+```sh
+(cd pi && npm ci)
+(cd pi/packages/ai && npm run hydrate-model-data)
+```
+
+`doctor` reports whether both are in place.
 
 Run `check` before opening a PR. `main` is protected: branch per feature (or
 a short-lived fix branch) off `main`, push, and open the pull request on

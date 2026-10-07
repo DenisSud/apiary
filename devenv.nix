@@ -43,6 +43,10 @@ in
   tasks."pi-bots:install".exec = ''
     set -euo pipefail
     cd "$DEVENV_ROOT"
+    if [ ! -f pi/package.json ]; then
+      echo "pi-bots: git submodule update --init pi"
+      git submodule update --init --recursive pi
+    fi
     stamp="node_modules/.pi-bots-lock"
     want="$(sha256sum bun.lock | cut -d' ' -f1)"
     if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$want" ]; then
@@ -132,11 +136,18 @@ in
           echo "pi         MISSING — running a bot needs it"
         fi
 
-        src="''${PI_SOURCE_DIR:-$HOME/dev/pi}"
+        src="''${PI_SOURCE_DIR:-$DEVENV_ROOT/pi}"
         if [ -f "$src/pi-test.sh" ]; then
           echo "pi source  $src"
         else
           echo "pi source  MISSING at $src — bots and the web bundle need the checkout"
+          echo "             git submodule update --init pi"
+        fi
+        if [ -d "$src" ] && [ ! -d "$src/node_modules" ]; then
+          echo "pi deps    not installed — (cd $src && npm ci)"
+        fi
+        if [ -d "$src" ] && [ -z "$(find "$src/packages/ai/src/providers/data" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+          echo "pi data    no model catalogs — (cd $src/packages/ai && npm run hydrate-model-data)"
         fi
 
         bots="''${PI_BOTS_HOME:-$HOME/Bots}"

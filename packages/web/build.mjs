@@ -1,5 +1,4 @@
 import { cpSync, mkdirSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -12,7 +11,7 @@ import { build } from "esbuild";
 
 const packageDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(packageDir, "../..");
-const sourceDir = process.env.PI_SOURCE_DIR ?? join(homedir(), "dev", "pi");
+const sourceDir = process.env.PI_SOURCE_DIR ?? join(repoRoot, "pi");
 const modules = join(repoRoot, "node_modules", "@earendil-works");
 const outDir = join(packageDir, "dist");
 

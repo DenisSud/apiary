@@ -73,6 +73,7 @@ agent dirs and the local rules overlay — not in the base.
 |---|---|
 | `base/` | the pi package floor every agent loads — empty for now (no extensions, no skills) |
 | `registry/` | `$PI_REGISTRY_DIR`: where an installable agent package would live — empty for now |
+| `pi/` | submodule: our `earendil-works/pi` fork — the experimental server/client stack and the service patches |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
 | `packages/connector/` | bot registry, launcher, bridge — `pi-bot`, `pi-bots-web` (`bin/`) |
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
@@ -104,28 +105,43 @@ agent dirs and the local rules overlay — not in the base.
 
 ## The pi source monorepo
 
-`~/dev/pi` is a fork of `earendil-works/pi` (Forgejo `DenisSud/pi`) with our
-patches on branch `dev`. The connector and the web client depend on its
-experimental client/server stack, which is not published:
+The `pi/` submodule is our fork of `earendil-works/pi` (Forgejo `DenisSud/pi`).
+The connector and the web client depend on its experimental client/server
+stack, which is not published. The submodule pins one commit; the fork's own
+`AGENTS.md` governs work inside it, and the branch it lives on is the fork's
+business, not this file's:
 
 - `packages/web/build.mjs` resolves `@pi/fork/*` imports to
-  `$PI_SOURCE_DIR/packages/coding-agent/src` (default `~/dev/pi`) and aliases
-  the installed `@earendil-works/*` packages to their built `dist/`.
+  `$PI_SOURCE_DIR/packages/coding-agent/src` (default: the `pi/` submodule) and
+  aliases the installed `@earendil-works/*` packages to their built `dist/`.
 - The launcher spawns bot servers from the same checkout (`$PI_SOURCE_DIR`);
   the published package does not ship the experimental runtime.
-- Fork patches: `src/experimental/` (client TUI, session worker, coding-agent
-  harness, services/activation, `cli/experimental/commands/client.ts`) plus
-  the core service patches — `core/system-prompt.ts` (custom/behavior/memory
+- The pin must be a commit that carries the fork patches this repo calls into:
+  `src/experimental/` (client TUI, session worker, coding-agent harness,
+  `services/activation.ts`, `cli/experimental/commands/client.ts`) plus the
+  core service patches — `core/system-prompt.ts` (custom/behavior/memory
   sections and the bot docs prose), `core/settings-manager.ts` (admin settings
   layer), `core/package-manager.ts` (admin package union),
   `experimental/services/agent-controller-provider.ts` (`/skill:name`
   expansion), `experimental/services/models-provider.ts` (model select clamp)
-  — and the bot docs under `packages/coding-agent/docs/`. Change them in
-  `~/dev/pi` on `dev`, following that repo's own `AGENTS.md`, and sync with
-  `git fetch upstream && git rebase upstream/main dev`.
+  — and the bot docs under `packages/coding-agent/docs/`.
 
-Never copy pi source into this repo. If an experimental API changes upstream,
-fix the fork and the call sites here together.
+To move the pin: check the commit out in `pi/`, run `check` and a bot smoke,
+and commit the pointer here in the same PR as the call sites it needs. If an
+experimental API changes upstream, fix the fork and the call sites here
+together. Never copy pi source into this repo.
+
+The checkout needs its own dependencies and generated model catalogs before
+bots or the web bundle run from it — a fresh submodule has neither:
+
+```sh
+(cd pi && npm ci)
+(cd pi/packages/ai && npm run hydrate-model-data)
+```
+
+`devenv`'s `doctor` reports both. Never copy pi source into this repo. If an
+experimental API changes upstream, fix the fork and the call sites here
+together.
 
 ## Dev environment (devenv)
 
@@ -142,8 +158,8 @@ fix the fork and the call sites here together.
 | `lint` / `doctor` | shellcheck the entrypoints; check pi, checkout, bots root, SearXNG |
 
 `devenv up` builds and serves; `devenv test` runs `check`. The pi source
-checkout (`$PI_SOURCE_DIR`) stays outside the devenv on purpose: bots and the
-web bundle need it.
+checkout is the `pi/` submodule; `$PI_SOURCE_DIR` overrides it (the container
+bakes its own at `/opt/pi`).
 
 Run `check` before opening a PR. It does not cover tests that need network
 or a live bot; for those follow the package READMEs.
