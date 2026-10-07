@@ -27,7 +27,7 @@ test("empty config applies every default", () => {
 	assert.equal(config.apiKeyEnv, undefined);
 	assert.deepEqual(config.guard, {
 		enabled: true,
-		tools: ["bash", "ptc"],
+		tools: ["bash"],
 		threshold: 0.5,
 		authorizedThreshold: 0.7,
 		onError: "open",

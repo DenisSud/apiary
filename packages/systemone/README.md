@@ -52,7 +52,7 @@ results or fetched pages) is the caller's job.
 | `apiKeyEnv` | — | env var holding the bearer key (optional) |
 | `guard.*` | see below | the tool-guard section (consumed by `registry/systemone`) |
 
-`guard`: `enabled` (`true`), `tools` (`["bash","ptc"]`), `threshold` (`0.5`),
+`guard`: `enabled` (`true`), `tools` (`["bash"]`), `threshold` (`0.5`),
 `authorizedThreshold` (`0.7`), `onError` (`"open"`), `contextMessages` (`4`),
 `contextChars` (`1500`), `blockedMessage` (—). See
 `registry/systemone/README.md` for what they mean.

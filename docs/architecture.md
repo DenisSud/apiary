@@ -9,7 +9,7 @@ the interface reference, the code is the how.
 | piece | role |
 |---|---|
 | `base/` | pi package every bot loads: extensions `security`, `sysinfo`, `memory`, `mem0`; skills `self-config`, `skill-authoring` |
-| `registry/` | optional per-agent packages: `ptc`, `web-search`, `systemone`, skills (`grilling`, `self-improvement`, `handoff`) |
+| `registry/` | optional per-agent packages: `web-search`, `systemone`, skills (`grilling`, `self-improvement`, `handoff`) |
 | `packages/pi-manager` | bot lifecycle: scaffold, read, update, archive, delete; reconciler; admin settings |
 | `packages/connector` | bot registry, launcher, bridge (HTTP API + WS relay), `pi-bot` CLI, web serving |
 | `packages/auth` | provider login sessions over pi's `ModelRuntime` |

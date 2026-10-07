@@ -9,7 +9,6 @@ is the install — the service installs the union on reload.
 
 | package | kind | what it does |
 |---|---|---|
-| `ptc` | extension | programmatic tool calling |
 | `web-search` | extension | `web_search` / `web_fetch` via a local SearXNG + trafilatura/pdftotext |
 | `systemone` | extension | decision-model middleware: pre-tool risk guard through a local System One endpoint (Kev) |
 | `grilling` | skill | stress-test a plan, one question at a time |
@@ -24,7 +23,7 @@ bot's `settings.json`:
 
 ```json
 {
-  "packages": ["<base package path>", "/abs/path/from/$PI_REGISTRY_DIR/ptc"]
+  "packages": ["<base package path>", "/abs/path/from/$PI_REGISTRY_DIR/web-search"]
 }
 ```
 

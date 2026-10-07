@@ -13,7 +13,7 @@
  *     "apiKeyEnv": "SYSTEMONE_API_KEY",
  *     "guard": {
  *       "enabled": true,
- *       "tools": ["bash", "ptc"],
+ *       "tools": ["bash"],
  *       "threshold": 0.5,
  *       "authorizedThreshold": 0.7,
  *       "onError": "open",
@@ -86,7 +86,7 @@ function parseGuard(raw: unknown): GuardConfig {
 		enabled = guard.enabled;
 	}
 
-	let tools = ["bash", "ptc"];
+	let tools = ["bash"];
 	if (guard.tools !== undefined) {
 		if (!Array.isArray(guard.tools) || guard.tools.length === 0) fail("guard.tools must be a non-empty array");
 		tools = guard.tools.map((tool) => {

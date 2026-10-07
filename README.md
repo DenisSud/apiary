@@ -14,7 +14,7 @@ all load.
 ```
 ├── package.json          # bun workspace root (service monorepo)
 ├── base/                 # the base pi package every agent loads (extensions, skills)
-├── registry/             # agent-usable packages: ptc, web-search, systemone, grilling, …
+├── registry/             # agent-usable packages: web-search, systemone, grilling, …
 ├── packages/connector/   # agent registry, launcher, bridge, the CLI wrappers (bin/)
 ├── packages/pi-manager/  # agent lifecycle: scaffold, read, update, archive, delete
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
@@ -61,8 +61,8 @@ gets; nothing else lives in it.
 
 ## Registry
 
-`registry/` holds packages an agent may install for itself: `ptc`,
-`web-search`, `systemone` (extensions) and `grilling`, `self-improvement`,
+`registry/` holds packages an agent may install for itself: `web-search`,
+`systemone` (extensions) and `grilling`, `self-improvement`,
 `handoff` (skills). Each directory is a pi package; an agent declares it in
 its `settings.json` `packages` list and the service installs the union on
 reload. The self-config skill points agents here; see `registry/README.md`.
@@ -72,7 +72,7 @@ reload. The self-config skill points agents here; see `registry/README.md`.
 for `web_fetch`. The devenv shell ships the extractors.
 
 `systemone` stays inert until `~/.pi/agent/systemone.json` exists; then it
-classifies guarded tool calls (`bash`, `ptc`) through a local System One
+classifies guarded tool calls (`bash`) through a local System One
 endpoint, asking whether the call is dangerous and whether the user asked for
 it — Kev serves one:
 `uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b --port 8009`.
