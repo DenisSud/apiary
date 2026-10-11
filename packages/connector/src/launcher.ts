@@ -3,8 +3,8 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:f
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { clearApplyMarker, ensureInvariants, isApplyPending, isArchivedDir, adminSettingsPath } from "@pi-bots/pi-manager";
-import { registryDir } from "@pi-bots/pi-manager";
+import { clearApplyMarker, ensureInvariants, isApplyPending, isArchivedDir, adminSettingsPath } from "@apiary/pi-manager";
+import { legacyEnvName, registryDir } from "@apiary/pi-manager";
 import { Client } from "@earendil-works/pi-client";
 import { createUnixTransportFactory } from "@earendil-works/pi-client/unix";
 import { getUnixSocketPath } from "@earendil-works/pi-server/unix";
@@ -243,8 +243,11 @@ function botEnv(name: string, dir: string): NodeJS.ProcessEnv {
     PI_BOT_NAME: name,
     // The forked server merges this file over global + project settings.
     PI_ADMIN_SETTINGS: adminSettingsPath(dir),
-    // Stable location of the package registry for this deployment.
-    PI_REGISTRY_DIR: registryDir(),
+    // Stable location of the package registry for this deployment. The
+    // pre-rename spelling is exported too so agent settings that still
+    // reference it keep working during the transition.
+    APIARY_REGISTRY_DIR: registryDir(),
+    [legacyEnvName("APIARY_REGISTRY_DIR")]: registryDir(),
   };
 }
 

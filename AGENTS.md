@@ -1,4 +1,4 @@
-# AGENTS.md — working in pi-bots
+# AGENTS.md — working in apiary
 
 Behavior rules for agents working in this repository. Knowledge lives in
 `docs/`, the package READMEs and the issue tracker; this file says how to
@@ -72,10 +72,10 @@ agent dirs and the local rules overlay — not in the base.
 | path | what |
 |---|---|
 | `base/` | the pi package floor every agent loads — empty for now (no extensions, no skills) |
-| `registry/` | `$PI_REGISTRY_DIR`: where an installable agent package would live — empty for now |
+| `registry/` | `$APIARY_REGISTRY_DIR`: where an installable agent package would live — empty for now |
 | `pi/` | submodule: our `earendil-works/pi` fork — the experimental server/client stack and the service patches |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
-| `packages/connector/` | bot registry, launcher, bridge — `pi-bot`, `pi-bots-web` (`bin/`) |
+| `packages/connector/` | bot registry, launcher, bridge — `apiary`, `apiary-web` (`bin/`) |
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
 | `packages/web/` | browser client served by the bridge (vanilla TS, esbuild) |
 | `deploy/` | service container image: Dockerfile, build and run scripts (issues #18, #36) |
@@ -100,7 +100,7 @@ agent dirs and the local rules overlay — not in the base.
 - `.pi/skills/frontend-design/SKILL.md` — the rules for UI work.
 - `.pi/skills/chrome-devtools-cli/SKILL.md` — driving a real browser from the
   terminal (upstream Chrome DevTools skill; NixOS setup in its `references/local.md`).
-- Forgejo `DenisSud/pi-bots` issues #1–#36 — the service backlog; labels
+- Forgejo `DenisSud/apiary` issues #1–#36 — the service backlog; labels
   `pkg:*`, `area:*` and `research`, milestones `Service v1` and `Later`.
 
 ## The pi source monorepo
@@ -154,7 +154,7 @@ together.
 | `test-connector` | `node --test` for `packages/connector` |
 | `build` | bundle `packages/web/dist` |
 | `web` / `web-watch` | serve the app + bridge; rebuild on change |
-| `bot <name>` | this checkout's `pi-bot` |
+| `bot <name>` | this checkout's `apiary` |
 | `lint` / `doctor` | shellcheck the entrypoints; check pi, checkout, bots root, SearXNG |
 
 `devenv up` builds and serves; `devenv test` runs `check`. The pi source
@@ -194,7 +194,7 @@ through the tool pipeline, so the security guard applies to each one.
   to the change (pure-core tests for logic, the real app for layout or state).
 - Bot sessions: go through the connector, not the stock in-process path.
 - Container: `deploy/build.sh` then `deploy/run.sh`; smoke it with
-  `docker exec pi-bots pi-bot new smoke && docker exec pi-bots pi-bot resolve smoke`
+  `docker exec apiary apiary new smoke && docker exec apiary apiary resolve smoke`
   and `curl 127.0.0.1:8787/api/bots`. See `docs/deployment.md`.
 
 ## Git and Forgejo

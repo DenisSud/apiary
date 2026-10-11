@@ -3,10 +3,10 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "pi-bots",
+      "name": "apiary",
     },
     "packages/auth": {
-      "name": "@pi-bots/auth",
+      "name": "@apiary/auth",
       "version": "0.0.0",
       "dependencies": {
         "@earendil-works/pi-ai": "0.87.1",
@@ -14,13 +14,17 @@
       },
     },
     "packages/connector": {
-      "name": "@pi-bots/connector",
+      "name": "@apiary/connector",
       "version": "0.0.0",
+      "bin": {
+        "apiary": "./bin/apiary",
+        "apiary-web": "./bin/apiary-web",
+      },
       "dependencies": {
+        "@apiary/auth": "workspace:*",
+        "@apiary/pi-manager": "workspace:*",
         "@earendil-works/pi-client": "0.87.1",
         "@earendil-works/pi-server": "0.87.1",
-        "@pi-bots/auth": "workspace:*",
-        "@pi-bots/pi-manager": "workspace:*",
         "ws": "8.22.0",
       },
       "devDependencies": {
@@ -28,14 +32,14 @@
       },
     },
     "packages/pi-manager": {
-      "name": "@pi-bots/pi-manager",
+      "name": "@apiary/pi-manager",
       "version": "0.0.0",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "0.87.1",
       },
     },
     "packages/web": {
-      "name": "@pi-bots/web",
+      "name": "@apiary/web",
       "version": "0.0.0",
       "dependencies": {
         "@earendil-works/chord": "0.87.1",
@@ -50,6 +54,14 @@
   },
   "packages": {
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.124.0", "", { "dependencies": { "json-schema-to-ts": "^3.1.1", "standardwebhooks": "^1.0.0" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-cN5O8i9UVxHeOQAzj/XjshWXG8KiibJDw9OGpH2Z/eR3n/RBxdoLxDJOcfqAJWvjaMDFfHTBADU04hWRJVkDyA=="],
+
+    "@apiary/auth": ["@apiary/auth@workspace:packages/auth"],
+
+    "@apiary/connector": ["@apiary/connector@workspace:packages/connector"],
+
+    "@apiary/pi-manager": ["@apiary/pi-manager@workspace:packages/pi-manager"],
+
+    "@apiary/web": ["@apiary/web@workspace:packages/web"],
 
     "@aws-sdk/client-bedrock-runtime": ["@aws-sdk/client-bedrock-runtime@3.1127.0", "", { "dependencies": { "@aws-sdk/core": "^3.977.9", "@aws-sdk/credential-provider-node": "^3.972.82", "@aws-sdk/eventstream-handler-node": "^3.972.34", "@aws-sdk/middleware-eventstream": "^3.972.29", "@aws-sdk/middleware-websocket": "^3.972.52", "@aws-sdk/token-providers": "3.1127.0", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/fetch-http-handler": "^5.7.2", "@smithy/node-http-handler": "^4.11.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-IDl/lrPb90aH+pZFHGNDmgH9nAUQj5PlZH1sJ3w7RikctyjHSnY3oNjZhrLoaBoQn/rNK0zsP6OHEqEhj2tdLA=="],
 
@@ -162,14 +174,6 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
 
     "@google/genai": ["@google/genai@2.21.0", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-+PDtco2/Z0ONdzCGekCoCT+O1VJS9xJQNN4XzQpXG/t3El/SWWMkCWlFRO1KmivOHPa4Q0VjUYu1HBKCZ/v33Q=="],
-
-    "@pi-bots/auth": ["@pi-bots/auth@workspace:packages/auth"],
-
-    "@pi-bots/connector": ["@pi-bots/connector@workspace:packages/connector"],
-
-    "@pi-bots/pi-manager": ["@pi-bots/pi-manager@workspace:packages/pi-manager"],
-
-    "@pi-bots/web": ["@pi-bots/web@workspace:packages/web"],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

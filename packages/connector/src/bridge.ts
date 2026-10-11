@@ -17,7 +17,7 @@ import {
   type CreateBotInput,
   type ThinkingLevel,
   type UpdateBotInput,
-} from "@pi-bots/pi-manager";
+} from "@apiary/pi-manager";
 import {
   AuthError,
   AuthService,
@@ -25,8 +25,8 @@ import {
   type AuthPromptRequest,
   type AuthType,
   type LoginHandle,
-} from "@pi-bots/auth";
-import { sharedAgentDir } from "@pi-bots/pi-manager";
+} from "@apiary/auth";
+import { sharedAgentDir } from "@apiary/pi-manager";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { applyPendingReload, resolveAttach, stopServer, type AttachTarget } from "./launcher.ts";
 import { isValidBotName, lockPath, logPath, serverDir } from "./paths.ts";
@@ -543,7 +543,7 @@ async function handleUpgrade(
 
   let target: AttachTarget;
   try {
-    // Starts the bot's server when it is not running, like `pi-bot attach`.
+    // Starts the bot's server when it is not running, like `apiary attach`.
     target = await launcher.resolveAttach(bot, session === null ? {} : { sessionId: session });
   } catch (error) {
     rejectUpgrade(socket, 502, error instanceof Error ? error.message : "could not start the bot");
@@ -569,7 +569,7 @@ function startApplyWatcher(activeRelays: Map<string, number>): NodeJS.Timeout {
     sweeping = true;
     void sweepApplyMarkers(activeRelays)
       .catch((error: unknown) => {
-        console.error(`pi-bots: apply sweep failed: ${messageOf(error)}`);
+        console.error(`apiary: apply sweep failed: ${messageOf(error)}`);
       })
       .finally(() => {
         sweeping = false;
@@ -585,7 +585,7 @@ async function sweepApplyMarkers(activeRelays: Map<string, number>): Promise<voi
     try {
       await applyPendingReload(bot.name);
     } catch (error) {
-      console.error(`pi-bots: reload of '${bot.name}' failed: ${messageOf(error)}`);
+      console.error(`apiary: reload of '${bot.name}' failed: ${messageOf(error)}`);
     }
   }
 }

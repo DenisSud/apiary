@@ -3,7 +3,7 @@ name: frontend-design
 description: Use when working on the web UI in packages/web — layout, styling, components, motion, colors, or reviewing a change against the project's design system. Covers the token set, the rules that must not be broken, and how to verify visually.
 ---
 
-# Frontend design in pi-bots
+# Frontend design in apiary
 
 The web client (`packages/web`) is plain TypeScript plus one CSS file, no
 framework, one esbuild bundle. The design is deliberate: Apple-HIG discipline,
@@ -71,7 +71,7 @@ These were decisions, not accidents. Change them only when the maintainer asks.
 
 ```bash
 bun run build          # bundle to packages/web/dist
-packages/connector/bin/pi-bots-web  # serve app + bridge on 127.0.0.1:8787
+packages/connector/bin/apiary-web  # serve app + bridge on 127.0.0.1:8787
 # in a devenv shell: build, web, web-watch
 ```
 

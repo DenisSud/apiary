@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 // The reconciler reinstalls it, so edits to the file are overwritten.
 
 const POST_COMMIT = `#!/bin/sh
-# pi-bots post-commit: mark config-surface commits for the service to apply.
+# apiary post-commit: mark config-surface commits for the service to apply.
 # Installed by pi-manager; the reconciler overwrites edits.
 set -u
 

@@ -1,6 +1,6 @@
 # Product
 
-What pi-bots is, who it is for, and what "done" means. This is the north
+What apiary is, who it is for, and what "done" means. This is the north
 star: outcomes and principles, not implementation. The epics in the issue
 tracker hold the specs of record; the code holds the how.
 

@@ -10,7 +10,7 @@ persona, skills, extensions, settings, sessions, and memory, living under
 
 Seven agents in daily use: coding, time management, contacts (Gmail), the
 homelab, relocation, memory curation, and a chief of staff that owns the
-fleet. The `pi-bot` CLI runs them; the web client manages the fleet.
+fleet. The `apiary` CLI runs them; the web client manages the fleet.
 
 ## Layout
 
@@ -54,21 +54,21 @@ floor at runtime and the content comes from the deployment's own package.
 
 ## Registry
 
-`registry/` is the directory the service exports as `PI_REGISTRY_DIR`: where a
+`registry/` is the directory the service exports as `APIARY_REGISTRY_DIR`: where a
 curated package an agent may install for itself would live. It holds no
 packages for now. Adding one is declaring it in the bot's `settings.json`
-`packages` list — a path under `$PI_REGISTRY_DIR`, any other path, or a git
+`packages` list — a path under `$APIARY_REGISTRY_DIR`, any other path, or a git
 URL — and the service installs the union on reload. See `registry/README.md`.
 
 ## Agents
 
 ```bash
-pi-bot <name>        # run an agent
-pi-bot list          # which agents exist
-pi-bot new <name>    # scaffold one under $PI_BOTS_HOME
+apiary <name>        # run an agent
+apiary list          # which agents exist
+apiary new <name>    # scaffold one under $APIARY_HOME
 ```
 
-An agent run is just `PI_CODING_AGENT_DIR=$PI_BOTS_HOME/<name>` — no `-e`, no
+An agent run is just `PI_CODING_AGENT_DIR=$APIARY_HOME/<name>` — no `-e`, no
 `--append-system-prompt`, no `--session-dir`. Pi reads the agent dir as its
 agent dir: `SOUL.md` is the prompt preamble and `BEHAVIOR.md` the behavior
 section, `skills/` and `extensions/` load
@@ -84,7 +84,7 @@ private remote — pull --rebase before editing, push after.
 ## Run
 
 The container is the only supported runtime: `deploy/run.sh` runs the service
-from the `pi-bots:local` image, with the `/data` volume holding agents, state
+from the `apiary:local` image, with the `/data` volume holding agents, state
 and credentials (see `docs/deployment.md`). The devenv shell runs the service on
 the host for development only.
 
@@ -114,15 +114,15 @@ fresh one on the next attach. Notes-only commits never restart anything.
 ## Add an agent
 
 ```bash
-pi-bot new <name>             # scaffold $PI_BOTS_HOME/<name> (name only)
-pi-bot <name>                 # run it; the web client starts self-configuration
+apiary new <name>             # scaffold $APIARY_HOME/<name> (name only)
+apiary <name>                 # run it; the web client starts self-configuration
 ```
 
 The web onboarding creates the agent and sends `/skill:self-config Set me
 up.`; the skill interviews the user, edits SOUL.md / BEHAVIOR.md / settings /
 skills, and commits `init`.
 
-`pi-bot show/archive/unarchive/rm` manage the rest; the bridge exposes the same
+`apiary show/archive/unarchive/rm` manage the rest; the bridge exposes the same
 operations over HTTP (`packages/pi-manager` owns the lifecycle).
 
 ## Development
@@ -142,7 +142,7 @@ Tasks are devenv scripts, all listed by `devenv info`:
 | `build` | bundle packages/web/dist |
 | `web` | serve the app + bridge on 127.0.0.1:8787 |
 | `web-watch` | rebuild the bundle while packages/web/src changes |
-| `bot <name>` | this checkout's pi-bot (local connector source) |
+| `bot <name>` | this checkout's apiary (local connector source) |
 | `lint` | shellcheck the shell entrypoints |
 | `doctor` | pi, the pi source checkout, agents root, SearXNG |
 

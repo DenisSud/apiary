@@ -1,5 +1,5 @@
 {
-  "name": "@pi-bots/connector",
+  "name": "@apiary/connector",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,8 +7,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
-    "pi-bot": "./bin/pi-bot",
-    "pi-bots-web": "./bin/pi-bots-web"
+    "apiary": "./bin/apiary",
+    "apiary-web": "./bin/apiary-web"
   },
   "scripts": {
     "test": "node --test test/*.test.ts"
@@ -16,8 +16,8 @@
   "dependencies": {
     "@earendil-works/pi-client": "0.87.1",
     "@earendil-works/pi-server": "0.87.1",
-    "@pi-bots/auth": "workspace:*",
-    "@pi-bots/pi-manager": "workspace:*",
+    "@apiary/auth": "workspace:*",
+    "@apiary/pi-manager": "workspace:*",
     "ws": "8.22.0"
   },
   "devDependencies": {

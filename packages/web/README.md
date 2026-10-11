@@ -1,6 +1,6 @@
-# @pi-bots/web — the browser client
+# @apiary/web — the browser client
 
-The app served by `packages/connector/bin/pi-bots-web`: a bot list, one open session, and the
+The app served by `packages/connector/bin/apiary-web`: a bot list, one open session, and the
 transcript of that session. It talks to a bot's pi server through the bridge's
 WebSocket using the same client stack as the TUI (`pi-client` + Chord service
 facades), so there is no second protocol.
@@ -14,7 +14,7 @@ defines live at the top of `src/style.css`.
 ```bash
 bun install                 # once, repo root
 bun run build               # bundle to packages/web/dist
-packages/connector/bin/pi-bots-web  # http://127.0.0.1:8787
+packages/connector/bin/apiary-web  # http://127.0.0.1:8787
 ```
 
 In a devenv shell: `build`, `web`, `web-watch` (rebuild on change), `test`.
@@ -72,7 +72,7 @@ turn runs, `requestAbort(operation.id)` for stop, `compact` while idle.
 
 ## Onboarding
 
-First run (no bots in `PI_BOTS_HOME`) swaps the main area for the onboarding
+First run (no bots in `APIARY_HOME`) swaps the main area for the onboarding
 view: provider login over the bridge auth proxy, then a name, then create. It
 opens again from the sidebar `+` and the no-session empty state. On create,
 `main.ts` opens a fresh session and sends the first-setup prompt through the

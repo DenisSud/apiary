@@ -1,4 +1,4 @@
-# @pi-bots/connector
+# @apiary/connector
 
 The working core of the service: which bots exist, which session a bot should
 open, where that choice is recorded, how a bot's server is started, and how
@@ -10,14 +10,14 @@ enforces that the checkout and the installed `pi-client` match.
 ## CLI
 
 ```
-pi-bot attach <bot> [--new]              ensure server, resolve session, run the client
-pi-bot message <bot> <text...> [--new]   send a prompt, print the reply
-pi-bot compact <bot> [--new]             compact the bot's session
-pi-bot stop <bot>                        stop the bot's server
-pi-bot resolve <bot> [--new]             ensure server, print the ref (TUI fork, --json)
-pi-bot list [--json]                     list bots
-pi-bot new <name>                        scaffold (pi-manager)
-pi-bot <bot> [--new]                     sugar for attach
+apiary attach <bot> [--new]              ensure server, resolve session, run the client
+apiary message <bot> <text...> [--new]   send a prompt, print the reply
+apiary compact <bot> [--new]             compact the bot's session
+apiary stop <bot>                        stop the bot's server
+apiary resolve <bot> [--new]             ensure server, print the ref (TUI fork, --json)
+apiary list [--json]                     list bots
+apiary new <name>                        scaffold (pi-manager)
+apiary <bot> [--new]                     sugar for attach
 ```
 
 There is no `serve` verb: a bot runs only as a server.
@@ -64,7 +64,7 @@ sessions       <bot>/experimental/sessions
 spawn          node <pi checkout>/.../experimental/cli.ts server --server-id <id>
 env            PI_EXPERIMENTAL=1 PI_CODING_AGENT_DIR=<bot> PI_SERVER_DIR=<dir>
                PI_BOT_NAME=<bot> PI_ADMIN_SETTINGS=<bot>/.admin-settings.json
-               PI_REGISTRY_DIR=<registry dir>
+               APIARY_REGISTRY_DIR=<registry dir>
 ```
 
 Detached, `cwd` = bot dir, stdio to the log. `spawnServer` is a
@@ -88,7 +88,7 @@ route. **`compact`** runs the headless client with `--compact`.
 
 ## Bridge
 
-`pi-bots-web` serves the app and the API (default `127.0.0.1:8787`):
+`apiary-web` serves the app and the API (default `127.0.0.1:8787`):
 
 | endpoint | what |
 |---|---|
@@ -110,7 +110,7 @@ status.
 
 ## TUI
 
-The experimental client TUI gets `/bot` (picker over `pi-bot list --json`) and
+The experimental client TUI gets `/bot` (picker over `apiary list --json`) and
 `/new` (fresh session, recorded before attach). Switching restarts the client
 in-process against the target's socket; the turn itself continues on the
 server. The launcher passes `PI_BOT_NAME` and `PI_BOT_BIN`; policy stays in

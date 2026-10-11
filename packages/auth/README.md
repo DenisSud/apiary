@@ -1,4 +1,4 @@
-# @pi-bots/auth
+# @apiary/auth
 
 Provider login sessions over pi's `ModelRuntime`. Transport-agnostic: the
 bridge in `packages/connector` adapts it to HTTP + WebSocket, nothing here

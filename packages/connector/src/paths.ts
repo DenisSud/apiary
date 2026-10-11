@@ -1,11 +1,11 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertBotName } from "@pi-bots/pi-manager";
+import { assertBotName } from "@apiary/pi-manager";
 
 // The agents root, bot name rules and shared agent dir belong to pi-manager;
 // the connector re-exports them so callers keep one import site.
-export { assertBotName, botsHome, isValidBotName } from "@pi-bots/pi-manager";
+export { assertBotName, botsHome, isValidBotName } from "@apiary/pi-manager";
 
 // Environment is read per call so tests and callers can point the state root
 // at a temp dir after import.

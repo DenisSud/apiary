@@ -40,22 +40,22 @@ in
 
   # ── `devenv shell` setup ────────────────────────────────────────────
   # bun install only when bun.lock (or bun itself) changed.
-  tasks."pi-bots:install".exec = ''
+  tasks."apiary:install".exec = ''
     set -euo pipefail
     cd "$DEVENV_ROOT"
     if [ ! -f pi/package.json ]; then
-      echo "pi-bots: git submodule update --init pi"
+      echo "apiary: git submodule update --init pi"
       git submodule update --init --recursive pi
     fi
-    stamp="node_modules/.pi-bots-lock"
+    stamp="node_modules/.apiary-lock"
     want="$(sha256sum bun.lock | cut -d' ' -f1)"
     if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$want" ]; then
-      echo "pi-bots: bun install (bun.lock changed)"
+      echo "apiary: bun install (bun.lock changed)"
       bun install --frozen-lockfile
       printf '%s\n' "$want" > "$stamp"
     fi
   '';
-  tasks."devenv:enterShell".after = [ "pi-bots:install" ];
+  tasks."devenv:enterShell".after = [ "apiary:install" ];
 
   # ── Commands ────────────────────────────────────────────────────────
   # `devenv info` lists these; the shell puts them on PATH.
@@ -90,7 +90,7 @@ in
       description = "Serve the built web app + bridge on 127.0.0.1:8787";
       exec = ''
         cd "$DEVENV_ROOT"
-        exec packages/connector/bin/pi-bots-web "$@"
+        exec packages/connector/bin/apiary-web "$@"
       '';
     };
 
@@ -103,10 +103,10 @@ in
     };
 
     bot = {
-      description = "This checkout's pi-bot (local connector source)";
+      description = "This checkout's apiary (local connector source)";
       exec = ''
         cd "$DEVENV_ROOT"
-        exec packages/connector/bin/pi-bot "$@"
+        exec packages/connector/bin/apiary "$@"
       '';
     };
 
@@ -115,7 +115,7 @@ in
       exec = ''
         cd "$DEVENV_ROOT"
         shellcheck -S warning \
-          packages/connector/bin/pi-bot packages/connector/bin/pi-bots-web
+          packages/connector/bin/apiary packages/connector/bin/apiary-web
         echo "lint clean"
       '';
     };
@@ -150,11 +150,11 @@ in
           echo "pi data    no model catalogs — (cd $src/packages/ai && npm run hydrate-model-data)"
         fi
 
-        bots="''${PI_BOTS_HOME:-$HOME/Bots}"
+        bots="''${APIARY_HOME:-$HOME/Bots}"
         if [ -d "$bots" ]; then
           echo "bots       $bots ($(find "$bots" -mindepth 2 -maxdepth 2 -name settings.json | wc -l) found)"
         else
-          echo "bots       $bots missing — create one with: pi-bot new <name>"
+          echo "bots       $bots missing — create one with: apiary new <name>"
         fi
 
         searx="''${SEARXNG_BASE_URL:-http://127.0.0.1:8888}"
@@ -172,11 +172,11 @@ in
   processes.web.exec = ''
     cd ${config.devenv.root}
     bun run build
-    exec packages/connector/bin/pi-bots-web
+    exec packages/connector/bin/apiary-web
   '';
 
   enterShell = ''
-    echo "pi-bots devenv — node $(node --version), bun $(bun --version)"
+    echo "apiary devenv — node $(node --version), bun $(bun --version)"
     echo "commands: check · build · web · bot <name> · doctor   (devenv info)"
   '';
 

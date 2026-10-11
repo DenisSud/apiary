@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 // Agent repos are machine-managed; a fixed identity keeps commits honest and
 // keeps tests independent of the user's global git config.
-const IDENTITY = ["-c", "user.name=pi-bots", "-c", "user.email=pi-bots@localhost"];
+const IDENTITY = ["-c", "user.name=apiary", "-c", "user.email=apiary@localhost"];
 
 export function git(dir: string, args: string[]): { code: number; stdout: string; stderr: string } {
   const result = spawnSync("git", ["-C", dir, ...IDENTITY, ...args], { encoding: "utf8" });

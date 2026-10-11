@@ -1,8 +1,8 @@
-# @pi-bots/pi-manager
+# @apiary/pi-manager
 
 Bot lifecycle for the service: creates, reads, updates, archives and deletes
-bot agent dirs under `$PI_BOTS_HOME` (default `~/Bots`), and keeps their
-service-owned invariants true. One writer; the bridge and the `pi-bot` CLI
+bot agent dirs under `$APIARY_HOME` (default `~/Bots`), and keeps their
+service-owned invariants true. One writer; the bridge and the `apiary` CLI
 both route through this package.
 
 ## API
@@ -11,7 +11,7 @@ both route through this package.
 import {
   createBot, readBot, listBots, updateBot, archiveBot, unarchiveBot, deleteBot,
   ensureInvariants, writeAdminSettings,
-} from "@pi-bots/pi-manager";
+} from "@apiary/pi-manager";
 
 await createBot({ name, packages?, thinking? });
 readBot(name);       // { name, dir, archived, setup, packages, model, thinking? }
@@ -83,7 +83,7 @@ union floor, everything else agent-controlled.
 
 | variable | default | meaning |
 |---|---|---|
-| `PI_BOTS_HOME` | `~/Bots` | bot directories |
+| `APIARY_HOME` | `~/Bots` | bot directories |
 | `PI_SHARED_AGENT_DIR` | `~/.pi/agent` | shared auth/models/trust files |
 
 ## Tests

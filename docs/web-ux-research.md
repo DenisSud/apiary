@@ -4,7 +4,7 @@ Research report for `packages/web`. The source studied is the local
 `~/dev/open-webui` checkout (`0.11.4`, commit `8bd8b4fac`). File links are
 relative to this file (`docs/` → `../../open-webui/...`).
 
-The goal is not to clone Open WebUI. pi-bots is **not** a multi-model chat
+The goal is not to clone Open WebUI. apiary is **not** a multi-model chat
 product — it is an always-on agent console. One agent, one session, one
 conversation with something that runs tools, for a long time, on your behalf.
 That reframing decides what is worth taking.
@@ -14,13 +14,13 @@ reader who takes away only the checklist should take these too.
 
 ## Two pushbacks, up front
 
-**1. pi-bots already does the two hardest structural things better — do not
+**1. apiary already does the two hardest structural things better — do not
 replace them with Open WebUI's versions.**
 
 - The transcript is append-only (block signatures, patch from the first changed
   block). Open WebUI rebuilds the whole list on every change and patches it
   with rAF throttling and `content-visibility` virtualization to survive the
-  cost. pi-bots' approach is more correct: an open `<details>` survives every
+  cost. apiary' approach is more correct: an open `<details>` survives every
   snapshot, and nodes do not blink. Keep it (see §2.1).
 - Following the end is a `pinned` state machine in `scroll.ts`. Open WebUI uses
   a 50px distance buffer plus a double-rAF scroll hack. The buffer re-pins too
@@ -141,9 +141,9 @@ than JS mount/destroy — with a WebKit escape hatch because Safari's
 ```
 
 **Steal:** the `role="log"` pattern (cheap, big a11y win) and the measured
-column. **Defer:** `content-visibility` virtualization — pi-bots transcripts
+column. **Defer:** `content-visibility` virtualization — apiary transcripts
 are one session and the append-only renderer does not rebuild nodes; add it
-only if long sessions start janking. pi-bots **have** the append-only
+only if long sessions start janking. apiary **has** the append-only
 signature renderer, which is strictly better than Open WebUI's full-list
 rebuild for correctness (open `<details>` survives).
 
@@ -201,14 +201,14 @@ becoming a wall:
 const GROUPABLE_DETAIL_TYPES = new Set(['tool_calls', 'reasoning', 'code_interpreter']);
 ```
 
-**Steal the *shape*, not the wire handling.** pi-bots already receives
+**Steal the *shape*, not the wire handling.** apiary already receives
 thinking as a separate stream and updates the `<pre>` node-by-node, and the
 "Working/Waiting" trace bubble already collapses when text arrives (see
 `transcript.ts`). Two refinements worth taking:
 
 - label the collapsed trace with **elapsed time** ("Thought for 6 s") instead
   of a bare spinner, so a long think reads as work, not a hang;
-- keep reasoning **out of the settled transcript** (pi-bots already does) and
+- keep reasoning **out of the settled transcript** (apiary already does) and
   let the session tree own the full trace (already the plan).
 
 ### 2.4 Tool calls — the most reusable component
@@ -246,9 +246,9 @@ const RESULT_PREVIEW_LIMIT = 10000;
 // … "Show all ({{COUNT}} characters)"
 ```
 
-**Steal all of it.** For pi-bots this maps onto `tools.ts` + the transcript:
+**Steal all of it.** For apiary this maps onto `tools.ts` + the transcript:
 the quiet row already exists (glyph, one-line arg, duration, state glyph), but
-the piece pi-bots does not yet have is the **inline approval affordance for
+the piece apiary does not yet have is the **inline approval affordance for
 guarded tool calls** — which is exactly the security guard's surface. Put
 Allow/Deny in the row, with `aria-expanded` on the disclosure, and clamp
 results with "Show all (N chars)" rather than dumping 10k of stdout.
@@ -267,7 +267,7 @@ for html/svg, and a dedicated diff renderer.
 **Steal:** Copy-with-confirmation, Collapse for long blocks, the language
 label, and "N hidden lines". **Skip:** Run (Pyodide/Jupyter), Save-back into
 the message, Preview, Diff — none of that is the agent's job here, and each
-is a big dependency. pi-bots' `markdown.ts` is 24 lines today; copy + collapse
+is a big dependency. apiary' `markdown.ts` is 24 lines today; copy + collapse
 are the two that will be felt.
 
 ### 2.6 Sources
@@ -296,7 +296,7 @@ const scrollToBottom = () => {
 autoScroll = element.scrollHeight - element.scrollTop <= element.clientHeight + 50;
 ```
 
-**Have (better):** pi-bots' `scroll.ts` makes following a state machine
+**Have (better):** apiary' `scroll.ts` makes following a state machine
 (`pinned`), distinguishes browser-caused shrink from the reader moving up, and
 observes content *size* with `ResizeObserver` instead of hooking messages. Do
 not import the 50px buffer or the double-rAF. NN/g #7 is the external
@@ -304,7 +304,7 @@ confirmation of why this matters.
 
 **Steal from MUI, not Open WebUI:** the **jump-to-latest affordance with an
 unseen count** and the hidden `role="status"` live region that announces when
-a streamed response starts and completes. pi-bots has the jump pill; adding
+a streamed response starts and completes. apiary has the jump pill; adding
 the unseen count (messages/count) is a small, high-value touch, and the
 hidden live region is a cheap a11y improvement for a log that updates itself.
 
@@ -314,7 +314,7 @@ hidden live region is a cheap a11y improvement for a log that updates itself.
 
 `composer.ts` already owns the pill (auto-grow, 14-line cap, expand toggle,
 send state, no focus treatment). Open WebUI's composer is far larger and
-mostly about things pi-bots should not have (rich text via TipTap, model
+mostly about things apiary should not have (rich text via TipTap, model
 capability menus, voice, `@`/`#`/`$`/`:` command palettes, skills, MCP tool
 pickers, Google Drive). But five *small correctness and forgiveness* details
 are worth porting:
@@ -334,7 +334,7 @@ function inOrNearComposition(event) {
 ```
 
 **2. Enter vs Shift+Enter**, with a `ctrlEnterToSend` escape for users who
-want newline-first. pi-bots should ship Enter=send / Shift+Enter=newline and
+want newline-first. apiary should ship Enter=send / Shift+Enter=newline and
 leave the toggle for when someone asks.
 
 **3. ArrowUp on an empty composer edits the last user message** — a
@@ -350,14 +350,14 @@ if (prompt === '' && e.key == 'ArrowUp') {
 ```
 
 **4. Escape stops the running turn** (`if (e.key === 'Escape') stopResponse();`).
-pi-bots has abort; wire it to Escape.
+apiary has abort; wire it to Escape.
 
 **5. Large paste becomes a file**, above a threshold, so a 200KB paste does
 not wedge the composer (`PASTED_TEXT_CHARACTER_LIMIT`, `MessageInput.svelte:2192`).
 
 Also: **queued messages** are first-class rows with Send now / Edit / Delete
 ([`QueuedMessageItem.svelte`](../../open-webui/src/lib/components/chat/MessageInput/QueuedMessageItem.svelte)).
-pi-bots already surfaces steers/follow-ups from `snapshot.queues` and restores
+apiary already surfaces steers/follow-ups from `snapshot.queues` and restores
 text on abort; make sure the row exposes edit/remove, not just read-only text.
 
 **Skip:** rich-text input (the dual textarea/TipTap path is a large share of
@@ -388,7 +388,7 @@ experience. Open WebUI has three mechanisms:
   something is active.
 
 **Steal:** the shimmer for active status text, the idea of a status
-**timeline** (pi-bots' `operation`/`runningTools` already give the data), and
+**timeline** (apiary' `operation`/`runningTools` already give the data), and
 the TaskList for when the agent runs a todo list. This is where the console
 feels alive instead of frozen. Keep the rule from `frontend-design`: status
 colour describes processes only, never styles something clickable.
@@ -413,7 +413,7 @@ class="{isLastMessage ? 'visible' : 'hover-reveal'} p-1.5 ..."
 
 **Steal:** the small set — **Copy, Retry, Edit, branch/delete** — and the
 hover-reveal rule (actions on the last message visible, older ones on hover).
-pi-bots has abort but almost no per-message actions today; Copy and Retry are
+apiary has abort but almost no per-message actions today; Copy and Retry are
 the first two.
 
 ---
@@ -436,7 +436,7 @@ waterfall:
 NN/g #3/#4 back this: show what the agent can do through example prompts, and
 present follow-ups as **buttons**, not text.
 
-pi-bots' first-run onboarding (provider login + name + self-config kickoff) is
+apiary' first-run onboarding (provider login + name + self-config kickoff) is
 already a different and better flow for first run. **Steal for the empty
 *established* session:** clickable suggestions drawn from the agent's skills,
 and optional after-answer follow-ups (`FollowUps.svelte` presents them as rows
@@ -449,7 +449,7 @@ CSS.
 
 Open WebUI: sidebar width transitions and a `$mobile` store drives a drawer;
 `MobileSwipePanel.svelte` is a genuinely good edge-swipe implementation worth
-reading even though pi-bots already has a drawer:
+reading even though apiary already has a drawer:
 
 ```js
 // common/MobileSwipePanel.svelte:4
@@ -467,7 +467,7 @@ committed, and honours `prefers-reduced-motion`.
 
 **Steal:** the gesture *policy* (unsafe edge, slop, axis ratio, flick
 velocity, skip-on-input, scroll-lock) — this is the difference between a
-drawer that feels native and one that hijacks scrolling. pi-bots' `panel.ts`
+drawer that feels native and one that hijacks scrolling. apiary' `panel.ts`
 already owns the sidebar/drawer decision and remembers state per layout;
 layer the gesture policy on top. **Skip:** animating sidebar width (janky);
 note their `767px` breakpoint differs from the panel's own widths, a small
@@ -511,7 +511,7 @@ keybinding editor.
 
 - Throttle all streaming work to one rAF; never re-render synchronously per
   token.
-- Don't remount nodes that are still on screen — patch in place (pi-bots
+- Don't remount nodes that are still on screen — patch in place (apiary
   already does; Open WebUI's `{#key}` blocks are a cautionary tale).
 - `overflow-x-auto` every table/code block; `break-words` on the message.
 - Give the action row a reserved footprint so hovering does not shift layout.
@@ -524,12 +524,12 @@ keybinding editor.
 
 | Anti-pattern | Why |
 |---|---|
-| 2–5k-line components (`Chat.svelte` 4,684) | Untestable, merge-hostile. pi-bots' one-interface-per-module is the better frame. |
+| 2–5k-line components (`Chat.svelte` 4,684) | Untestable, merge-hostile. apiary' one-interface-per-module is the better frame. |
 | Two input paths (textarea + TipTap) | Doubles composer complexity for formatting nobody asked for here. |
-| Feature sprawl (models, RAG, tools, artifacts, terminal, calls) | pi-bots is one agent; each of these is a product. |
-| Heavy deps (CodeMirror, highlight.js, mermaid, katex, pyodide, Fuse, DOMPurify) | pi-bots' no-new-dependency rule is a feature. Inline SVG + `marked` is enough. |
+| Feature sprawl (models, RAG, tools, artifacts, terminal, calls) | apiary is one agent; each of these is a product. |
+| Heavy deps (CodeMirror, highlight.js, mermaid, katex, pyodide, Fuse, DOMPurify) | apiary' no-new-dependency rule is a feature. Inline SVG + `marked` is enough. |
 | Toasts for every outcome, version-update toasts, modals | Chrome noise; prefer inline, in-place state. |
-| `autoScroll` 50px buffer + double-rAF scroll | pi-bots' `pinned` state is more correct; NN/g #7 says so too. |
+| `autoScroll` 50px buffer + double-rAF scroll | apiary' `pinned` state is more correct; NN/g #7 says so too. |
 | Token in `localStorage` | Not our auth model. |
 | `role="button"` divs | Use real buttons. |
 | Gray-on-gray that then needs a "high-contrast mode" | Start at accessible contrast. |
@@ -538,7 +538,7 @@ keybinding editor.
 
 ## 13. Recommended backlog for `packages/web`
 
-Priority order, with the Open WebUI reference and the pi-bots module it lands
+Priority order, with the Open WebUI reference and the apiary module it lands
 in.
 
 **P0 — correctness and control (small, felt immediately)**
@@ -585,7 +585,7 @@ making a slow, tool-using assistant feel present and controllable: a semantic
 log with a fixed measure, rAF-throttled streaming, a scroll that yields to the
 reader, a tool row that says exactly what it is doing and lets you approve it
 in place, reasoning that collapses, code you can copy, and status that moves
-while it works. pi-bots already solved the two hardest structural problems
+while it works. apiary already solved the two hardest structural problems
 better (append-only transcript, `pinned` following). What remains is to make
 the agent *legible while it runs* and *controllable at the point of state* —
 which is squarely the P0/P1 list above, and none of it requires a framework.
