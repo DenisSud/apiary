@@ -1,14 +1,16 @@
-# pi-bots
+# apiary
 
-The pi-bots service: agent lifecycle, the connector, the web client and the
-deployment that run a fleet of pi agents.
+A small service that runs a **fleet of personal AI agents** --- agent
+lifecycle, a connector, a web client, and the deployment. Agents are owned,
+not rented: each one is a complete, self-contained git repo with its own
+persona, skills, extensions, settings, sessions, and memory, living under
+`~/Bots`.
 
-Agents do **not** live here. An agent is a complete pi agent dir (its own
-persona, skills, extensions, settings, sessions, memory) in its own local git
-repo under `$PI_BOTS_HOME` (default `~/Bots`). The agent-side pi packages
-(extensions and skills) are not in this repo either: the base package and the
-registry below are empty placeholders for now, and a deployment installs its
-packages from a pi package of its own.
+## Status
+
+Seven agents in daily use: coding, time management, contacts (Gmail), the
+homelab, relocation, memory curation, and a chief of staff that owns the
+fleet. The `pi-bot` CLI runs them; the web client manages the fleet.
 
 ## Layout
 
@@ -165,4 +167,4 @@ one-time job per checkout:
 
 Run `check` before opening a PR. `main` is protected: branch per feature (or
 a short-lived fix branch) off `main`, push, and open the pull request on
-Forgejo.
+GitHub.
