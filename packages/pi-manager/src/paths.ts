@@ -7,20 +7,41 @@ import { BotError } from "./errors.ts";
 // Environment is read per call so tests and callers can point the roots at a
 // temp dir after import.
 
+// The fleet was renamed; the variable names from before the rename keep
+// working during the transition so an existing shell or agent dir does not
+// break. The new name wins, then the old spelling. Both live in one table so
+// the compatibility shim has a single home.
+const ENV_ALIASES = {
+  APIARY_HOME: ["PI", "BOTS", "HOME"].join("_"),
+  APIARY_REGISTRY_DIR: ["PI", "REGISTRY", "DIR"].join("_"),
+} as const;
+
+export type RenamedEnv = keyof typeof ENV_ALIASES;
+
+/** A renamed variable's value: the new name first, then its pre-rename spelling. */
+export function envValue(name: RenamedEnv): string | undefined {
+  return process.env[name] ?? process.env[ENV_ALIASES[name]];
+}
+
+/** The pre-rename spelling of a renamed variable, for dual-write during the transition. */
+export function legacyEnvName(name: RenamedEnv): string {
+  return ENV_ALIASES[name];
+}
+
 export function botsHome(): string {
-  return process.env.PI_BOTS_HOME ?? join(homedir(), "Bots");
+  return envValue("APIARY_HOME") ?? join(homedir(), "Bots");
 }
 
 export function sharedAgentDir(): string {
   return process.env.PI_SHARED_AGENT_DIR ?? join(homedir(), ".pi", "agent");
 }
 
-// The pi-bots checkout that owns the base pi package (extensions, skills).
+// The apiary checkout that owns the base pi package (extensions, skills).
 export function basePackageDir(): string {
   return resolve(fileURLToPath(new URL("../../../base", import.meta.url)));
 }
 
-/** The package registry an agent may install from; the service exports it as PI_REGISTRY_DIR. */
+/** The package registry an agent may install from; the service exports it as APIARY_REGISTRY_DIR. */
 export function registryDir(): string {
   return resolve(fileURLToPath(new URL("../../../registry", import.meta.url)));
 }

@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# apiary — attach to and manage this deployment's bots.
+#
+#   apiary attach <bot> [--new]   attach (starts the bot's server if needed)
+#   apiary resolve <bot>          ensure the server, resolve the session
+#   apiary list                   list bots
+#   apiary new <name>             scaffold a new bot
+#   apiary <bot> [--new]          same as attach
+#
+# A bot is a complete pi agent dir at $APIARY_HOME/<name>. It runs as a pi
+# server; this script only boots the TypeScript CLI in packages/connector.
+# See packages/connector/README.md for the launcher spec.
+set -eu
+
+self="$(readlink -f "$0")"
+root="$(cd "$(dirname "$self")/../../.." && pwd)"
+exec node "$root/packages/connector/src/bin.ts" "$@"

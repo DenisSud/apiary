@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { isApplyPending, isArchivedDir, isSetupPending } from "@pi-bots/pi-manager";
+import { isApplyPending, isArchivedDir, isSetupPending } from "@apiary/pi-manager";
 import { readJsonFile, removeFile, writeJsonAtomic } from "./files.ts";
 import { botsHome, isValidBotName, routePath } from "./paths.ts";
 

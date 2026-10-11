@@ -9,7 +9,7 @@ import { sessionsDir } from "../src/paths.ts";
 function setup(): void {
   const root = mkdtempSync(join(tmpdir(), "connector-"));
   process.env.PI_CONNECTOR_DIR = join(root, "state");
-  process.env.PI_BOTS_HOME = join(root, "bots");
+  process.env.APIARY_HOME = join(root, "bots");
 }
 
 test("recordAttached then readSession round trip", () => {

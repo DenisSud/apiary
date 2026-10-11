@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { AuthService, type AuthRuntime } from "@pi-bots/auth";
+import { AuthService, type AuthRuntime } from "@apiary/auth";
 import { startBridge, type BridgeLauncher } from "../src/bridge.ts";
 import { writeRoute } from "../src/registry.ts";
 import { recordAttached } from "../src/sessions.ts";
@@ -16,11 +16,11 @@ const TIMEOUT_MS = 5_000;
 function setupState(): void {
   const root = mkdtempSync(join(tmpdir(), "bridge-"));
   process.env.PI_CONNECTOR_DIR = join(root, "state");
-  process.env.PI_BOTS_HOME = join(root, "bots");
+  process.env.APIARY_HOME = join(root, "bots");
 }
 
 function makeBot(name: string): void {
-  const dir = join(process.env.PI_BOTS_HOME!, name);
+  const dir = join(process.env.APIARY_HOME!, name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "settings.json"), "{}\n");
 }
@@ -107,7 +107,7 @@ function roundtrip(port: number, query: string, chunks: readonly Buffer[]): Prom
 test("GET /api/bots summarizes bots, routes, and the last session", async () => {
   setupState();
   makeBot("alpha");
-  writeFileSync(join(process.env.PI_BOTS_HOME!, "alpha", ".apply"), "{}\n");
+  writeFileSync(join(process.env.APIARY_HOME!, "alpha", ".apply"), "{}\n");
   writeRoute("alpha", {
     serverId: SERVER_ID,
     socketPath: "/tmp/alpha.sock",
@@ -124,7 +124,7 @@ test("GET /api/bots summarizes bots, routes, and the last session", async () => 
     assert.equal(body.bots.length, 1);
     const bot = body.bots[0]!;
     assert.equal(bot.name, "alpha");
-    assert.equal(bot.dir, join(process.env.PI_BOTS_HOME!, "alpha"));
+    assert.equal(bot.dir, join(process.env.APIARY_HOME!, "alpha"));
     assert.equal(bot.running, true);
     assert.equal(bot.setup, false);
     assert.equal(bot.apply, true);
@@ -204,7 +204,7 @@ test("the management API creates, reads, updates, archives and deletes bots", as
       body: JSON.stringify({ confirm: "newbot" }),
     });
     assert.equal(deleted.status, 204);
-    assert.ok(!existsSync(join(process.env.PI_BOTS_HOME!, "newbot")));
+    assert.ok(!existsSync(join(process.env.APIARY_HOME!, "newbot")));
   } finally {
     await bridge.close();
   }

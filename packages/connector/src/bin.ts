@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { archiveBot, createBot, deleteBot, readBot, unarchiveBot } from "@pi-bots/pi-manager";
+import { archiveBot, createBot, deleteBot, readBot, unarchiveBot } from "@apiary/pi-manager";
 import { resolveAttach, runClient, stopServer } from "./launcher.ts";
 import { lockPath, logPath, serverDir } from "./paths.ts";
 import { clearRoute, listBots } from "./registry.ts";
@@ -9,21 +9,21 @@ import { clearSession } from "./sessions.ts";
 
 const BIN_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin");
 // The fork's /bot and /new call back into this CLI; tell it where we are.
-process.env.PI_BOT_BIN ??= join(BIN_DIR, "pi-bot");
+process.env.PI_BOT_BIN ??= join(BIN_DIR, "apiary");
 
 const USAGE = `usage:
-  pi-bot attach <bot> [--new]             attach to a bot (starts its server if needed)
-  pi-bot message <bot> <text...> [--new]  send a prompt and print the reply
-  pi-bot compact <bot> [--new]            compact the bot's session
-  pi-bot stop <bot>                       stop the bot's server
-  pi-bot resolve <bot> [--new]            ensure the server and resolve the session
-  pi-bot list [--json] [--all]            list bots (JSON for the TUI picker)
-  pi-bot show <bot>                       print a bot's config as JSON
-  pi-bot new <name>                       scaffold a new bot (name only)
-  pi-bot archive <bot>                    stop the server and archive the bot
-  pi-bot unarchive <bot>                  make an archived bot usable again
-  pi-bot rm <bot> --yes                   delete a bot and its dir
-  pi-bot <bot> [--new]                    same as attach
+  apiary attach <bot> [--new]             attach to a bot (starts its server if needed)
+  apiary message <bot> <text...> [--new]  send a prompt and print the reply
+  apiary compact <bot> [--new]            compact the bot's session
+  apiary stop <bot>                       stop the bot's server
+  apiary resolve <bot> [--new]            ensure the server and resolve the session
+  apiary list [--json] [--all]            list bots (JSON for the TUI picker)
+  apiary show <bot>                       print a bot's config as JSON
+  apiary new <name>                       scaffold a new bot (name only)
+  apiary archive <bot>                    stop the server and archive the bot
+  apiary unarchive <bot>                  make an archived bot usable again
+  apiary rm <bot> --yes                   delete a bot and its dir
+  apiary <bot> [--new]                    same as attach
 `;
 
 function parseBotArgs(args: string[]): { name: string; fresh: boolean } {
@@ -66,7 +66,7 @@ async function commandResolve(args: string[]): Promise<number> {
 
 async function commandNew(args: string[]): Promise<number> {
   const [name, ...rest] = args;
-  if (name === undefined) throw new Error("usage: pi-bot new <name>");
+  if (name === undefined) throw new Error("usage: apiary new <name>");
   if (rest.length > 0) throw new Error(`unexpected argument '${rest[0]}': create takes a name only`);
   const bot = await createBot({ name });
   console.log(`created ${bot.dir}`);
@@ -177,7 +177,7 @@ async function main(args: string[]): Promise<number> {
         process.stderr.write(USAGE);
         return 2;
       }
-      return commandAttach(args); // sugar: pi-bot <bot>
+      return commandAttach(args); // sugar: apiary <bot>
   }
 }
 
@@ -185,6 +185,6 @@ try {
   process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`pi-bot: ${message}\n`);
+  process.stderr.write(`apiary: ${message}\n`);
   process.exitCode = 1;
 }

@@ -10,12 +10,12 @@ import { routesDir } from "../src/paths.ts";
 function setup(): string {
   const root = mkdtempSync(join(tmpdir(), "connector-"));
   process.env.PI_CONNECTOR_DIR = join(root, "state");
-  process.env.PI_BOTS_HOME = join(root, "bots");
+  process.env.APIARY_HOME = join(root, "bots");
   return root;
 }
 
 function makeBot(name: string): void {
-  const dir = join(process.env.PI_BOTS_HOME!, name);
+  const dir = join(process.env.APIARY_HOME!, name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "settings.json"), "{}\n");
 }
@@ -24,16 +24,16 @@ test("listBots finds dirs with settings.json, sorted, skips the rest", () => {
   setup();
   makeBot("beta");
   makeBot("alpha");
-  mkdirSync(join(process.env.PI_BOTS_HOME!, "notabot"), { recursive: true });
+  mkdirSync(join(process.env.APIARY_HOME!, "notabot"), { recursive: true });
   makeBot(".hidden");
-  writeFileSync(join(process.env.PI_BOTS_HOME!, "file.txt"), "x");
+  writeFileSync(join(process.env.APIARY_HOME!, "file.txt"), "x");
 
   const bots = listBots();
   assert.deepEqual(
     bots.map((b) => b.name),
     ["alpha", "beta"],
   );
-  assert.equal(bots[0]!.dir, join(process.env.PI_BOTS_HOME!, "alpha"));
+  assert.equal(bots[0]!.dir, join(process.env.APIARY_HOME!, "alpha"));
   assert.equal(bots[0]!.hasRoute, false);
 
   writeRoute("alpha", { serverId: "s1", socketPath: "/tmp/a.sock" });
@@ -45,7 +45,7 @@ test("listBots hides archived bots unless asked", () => {
   setup();
   makeBot("alpha");
   makeBot("beta");
-  writeFileSync(join(process.env.PI_BOTS_HOME!, "alpha", ".archived"), "{}\n");
+  writeFileSync(join(process.env.APIARY_HOME!, "alpha", ".archived"), "{}\n");
 
   assert.deepEqual(
     listBots().map((bot) => bot.name),
@@ -68,7 +68,7 @@ test("requireBot refuses archived bots", () => {
   setup();
   makeBot("alpha");
   assert.equal(requireBot("alpha").name, "alpha");
-  writeFileSync(join(process.env.PI_BOTS_HOME!, "alpha", ".archived"), "{}\n");
+  writeFileSync(join(process.env.APIARY_HOME!, "alpha", ".archived"), "{}\n");
   assert.throws(() => requireBot("alpha"), /archived/);
   assert.throws(() => requireBot("missing"), /unknown bot/);
 });

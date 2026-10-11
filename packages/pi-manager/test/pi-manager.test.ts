@@ -49,7 +49,7 @@ function freshRoot(): string {
       2,
     )}\n`,
   );
-  process.env.PI_BOTS_HOME = join(root, "Bots");
+  process.env.APIARY_HOME = join(root, "Bots");
   process.env.PI_SHARED_AGENT_DIR = shared;
   return root;
 }

@@ -1,6 +1,6 @@
 import { startBridge } from "./bridge.ts";
 
-const USAGE = `usage: pi-bots-web [--host <host>] [--port <port>] [--web-dir <path>]
+const USAGE = `usage: apiary-web [--host <host>] [--port <port>] [--web-dir <path>]
 
 Serves the bot list on /api/bots, the built web app, and relays
 /ws?bot=<name>[&session=<uuid>] to the bot's server. Defaults to
@@ -41,7 +41,7 @@ export async function main(args: string[]): Promise<number> {
     ...(host === undefined ? {} : { host }),
     ...(webDir === undefined ? {} : { webDir }),
   });
-  console.log(`pi-bots-web listening on http://${bridge.host}:${bridge.port}`);
+  console.log(`apiary-web listening on http://${bridge.host}:${bridge.port}`);
   await new Promise<void>((resolve) => {
     const stop = (): void => {
       void bridge.close().then(resolve, resolve);
@@ -56,6 +56,6 @@ try {
   process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`pi-bots-web: ${message}\n`);
+  process.stderr.write(`apiary-web: ${message}\n`);
   process.exitCode = 1;
 }

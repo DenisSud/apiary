@@ -1,5 +1,5 @@
 {
-  "name": "@pi-bots/web",
+  "name": "@apiary/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
