@@ -1,7 +1,7 @@
 # registry — the package registry
 
 Where a curated pi package an agent may install for itself would live. The
-service exports this directory to every bot as `PI_REGISTRY_DIR`.
+service exports this directory to every bot as `APIARY_REGISTRY_DIR`.
 
 **It holds no packages for now.** Nothing agent-side ships in this repo: the
 extensions and skills a deployment runs live in that deployment's own pi
@@ -9,17 +9,17 @@ package. Add an entry here when the service itself should curate one.
 
 ## How agents use it
 
-The stable path to a package is `$PI_REGISTRY_DIR/<name>`. To add one, the
+The stable path to a package is `$APIARY_REGISTRY_DIR/<name>`. To add one, the
 agent (or the user) edits the bot's `settings.json`:
 
 ```json
 {
-  "packages": ["<base package path>", "/abs/path/from/$PI_REGISTRY_DIR/<name>"]
+  "packages": ["<base package path>", "/abs/path/from/$APIARY_REGISTRY_DIR/<name>"]
 }
 ```
 
 and commits. The post-commit apply restarts the server and the reconciler
-installs the declared union. `PI_REGISTRY_DIR` exists because the literal path
+installs the declared union. `APIARY_REGISTRY_DIR` exists because the literal path
 differs between deployments (a checkout here, a read-only mount in the
 container); nothing should hard-code it.
 

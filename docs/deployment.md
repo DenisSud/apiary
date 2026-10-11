@@ -6,9 +6,9 @@ in #18 and self-host completeness in #36.
 
 ## Image
 
-`deploy/Dockerfile` builds `pi-bots:local` from two trees:
+`deploy/Dockerfile` builds `apiary:local` from two trees:
 
-- this repo at `/opt/pi-bots` (dependencies installed, web bundle built);
+- this repo at `/opt/apiary` (dependencies installed, web bundle built);
 - the pi checkout at `/opt/pi` (`PI_SOURCE_DIR`) — bot servers run from it,
   so it must carry its generated model catalogs (`npm run hydrate-model-data`
   in `packages/ai` once per checkout; `build.sh` refuses to build without
@@ -19,12 +19,12 @@ read-only). A system git identity is baked in, so scaffold and notes commits
 work headless.
 
 ```sh
-deploy/build.sh              # pi-bots:local, from the local working trees
+deploy/build.sh              # apiary:local, from the local working trees
 deploy/run.sh                # docker run ... /data volume, loopback port 8787
 ```
 
 Run hardening: read-only root, tmpfs `/tmp`, dropped capabilities,
-`no-new-privileges`, conservative memory/CPU/pid limits (`PI_BOTS_*`
+`no-new-privileges`, conservative memory/CPU/pid limits (`APIARY_*`
 overrides). The port is published on loopback only: **no auth is in front of
 the bridge yet** — do not expose it (#36).
 
@@ -34,7 +34,7 @@ Everything stateful lives in `/data`:
 
 | path | what |
 |---|---|
-| `/data/bots` | the agent dirs (`PI_BOTS_HOME`) |
+| `/data/bots` | the agent dirs (`APIARY_HOME`) |
 | `/data/state` | routes, locks, logs (`PI_CONNECTOR_DIR`) |
 | `/data/home/.pi/agent` | shared agent dir: `auth.json`, `models.json`, `models-store.json`, `trust.json` |
 

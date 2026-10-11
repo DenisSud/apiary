@@ -9,21 +9,21 @@ the interface reference, the code is the how.
 | piece | role |
 |---|---|
 | `base/` | pi package every bot loads: the floor. Empty for now — no extensions, no skills |
-| `registry/` | `$PI_REGISTRY_DIR`: where an installable package would live. Empty for now |
+| `registry/` | `$APIARY_REGISTRY_DIR`: where an installable package would live. Empty for now |
 | `packages/pi-manager` | bot lifecycle: scaffold, read, update, archive, delete; reconciler; admin settings |
-| `packages/connector` | bot registry, launcher, bridge (HTTP API + WS relay), `pi-bot` CLI, web serving |
+| `packages/connector` | bot registry, launcher, bridge (HTTP API + WS relay), `apiary` CLI, web serving |
 | `packages/auth` | provider login sessions over pi's `ModelRuntime` |
 | `packages/auth/` | provider login sessions over pi's `ModelRuntime` |
 | `packages/web` | browser client served by the bridge |
 | `deploy/` | the container image and run scripts |
 | pi fork (`$PI_SOURCE_DIR`) | the experimental server/client stack and service patches |
 
-An agent is a complete pi agent dir under `$PI_BOTS_HOME`, its own git repo.
+An agent is a complete pi agent dir under `$APIARY_HOME`, its own git repo.
 See `docs/agents.md` for what it is and what it owns.
 
 ## The lifecycle
 
-1. **Create** — `pi-bot new <name>` (or the API) scaffolds the agent dir,
+1. **Create** — `apiary new <name>` (or the API) scaffolds the agent dir,
    commits `Scaffold <name>` and writes the `.setup` marker.
 2. **Setup** — the web client sends `/skill:self-config`; the agent interviews
    the user and commits exactly `init`, which clears `.setup` and writes
@@ -42,7 +42,7 @@ See `docs/agents.md` for what it is and what it owns.
 
 | state | location | owner |
 |---|---|---|
-| agent dir | `$PI_BOTS_HOME/<name>` | the agent (config surfaces) |
+| agent dir | `$APIARY_HOME/<name>` | the agent (config surfaces) |
 | shared agent dir | `PI_SHARED_AGENT_DIR` (`~/.pi/agent`): `auth.json`, `models.json`, `models-store.json`, `trust.json` | the service; symlinked into every agent dir |
 | connector state | `PI_CONNECTOR_DIR` (`~/.pi/bots`): routes, locks, logs, session pointers | the connector |
 | admin settings | `<bot>/.admin-settings.json` | the reconciler (read by the server as `PI_ADMIN_SETTINGS`) |
@@ -62,7 +62,7 @@ symlinks, not copies.
 | session pointer | clients → state root | `sessions/<bot>.json`, last attach wins, stale pointers self-heal |
 | route | launcher → clients | `routes/<bot>.json`: `{ serverId, socketPath, pid }` |
 | bridge data plane | browser ↔ bridge ↔ bot server | framed CBOR bytes, one WebSocket per session; the bridge never parses |
-| server env | launcher → pi server | `PI_CODING_AGENT_DIR`, `PI_SERVER_DIR`, `PI_BOT_NAME`, `PI_ADMIN_SETTINGS`, `PI_REGISTRY_DIR` |
+| server env | launcher → pi server | `PI_CODING_AGENT_DIR`, `PI_SERVER_DIR`, `PI_BOT_NAME`, `PI_ADMIN_SETTINGS`, `APIARY_REGISTRY_DIR` |
 
 ## Boundaries
 

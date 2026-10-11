@@ -59,11 +59,11 @@ per-character `StaticText` nodes (`uid=1_1 StaticText "T"`, …). Interactive
 elements — links, buttons, inputs — are still single nodes with usable UIDs,
 so the normal workflow is unaffected.
 
-## Driving the pi-bots web app
+## Driving the apiary web app
 
 ```sh
 bun run build
-packages/connector/bin/pi-bots-web &                                  # 127.0.0.1:8787
+packages/connector/bin/apiary-web &                                  # 127.0.0.1:8787
 chrome-devtools new_page http://127.0.0.1:8787
 chrome-devtools take_snapshot <pageId>
 chrome-devtools take_screenshot <pageId> --filePath /tmp/app.png

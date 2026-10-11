@@ -1,13 +1,13 @@
 # Agents
 
-What a pi-bots agent ("bot") is, what the agent and the service each own, and
+What an apiary agent ("bot") is, what the agent and the service each own, and
 how edits become running behavior. Per-component interfaces live in the
 package READMEs; the deep bot-facing pi docs live in the fork
 (`packages/coding-agent/docs/` in the pi checkout).
 
 ## What a bot is
 
-A complete pi agent dir under `$PI_BOTS_HOME` (`~/Bots`), its own git repo.
+A complete pi agent dir under `$APIARY_HOME` (`~/Bots`), its own git repo.
 The agent dir is the cwd of its server; pi reads it as the agent dir —
 `skills/`, `extensions/`, `settings.json`, sessions are all local. Shared
 plumbing (`auth.json`, `models.json`, `models-store.json`, `trust.json`) is
@@ -63,7 +63,7 @@ in the UI or by the agent.
 
 ## Registry
 
-`registry/` (or `$PI_REGISTRY_DIR`) is where a curated package an agent may
+`registry/` (or `$APIARY_REGISTRY_DIR`) is where a curated package an agent may
 declare in `settings.json` would live; it holds none for now. Declaring a
 package is installing it. See `registry/README.md`.
 
