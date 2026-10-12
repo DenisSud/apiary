@@ -73,6 +73,7 @@ agent dirs and the local rules overlay — not in the base.
 |---|---|
 | `base/` | the pi package floor every agent loads — empty for now (no extensions, no skills) |
 | `registry/` | `$APIARY_REGISTRY_DIR`: where an installable agent package would live — empty for now |
+| `LICENSE` | Elastic License 2.0 (`Elastic-2.0`): anything allowed except offering the software as a hosted or managed service to third parties |
 | `pi/` | submodule: our `earendil-works/pi` fork — the experimental server/client stack and the service patches |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
 | `packages/connector/` | bot registry, launcher, bridge — `apiary`, `apiary-web` (`bin/`) |
@@ -200,13 +201,16 @@ through the tool pipeline, so the security guard applies to each one.
 ## Git and Forgejo
 
 Trunk-based: `main` is the only long-lived branch and is protected — changes
-reach it only through a pull request on Forgejo, never a direct push.
+reach it only through a pull request on GitHub, never a direct push.
 
 - Sizable work: a branch per feature (`feat/<slug>` or `<area>/<slug>`),
   branched from `main`, pushed, PR'd into `main`, linked to its work thread
   (`Refs #N`).
 - Small fixes: a short-lived `fix/<slug>` branch and a PR; no issue needed
   for trivia.
+- External contributions: the PR must carry the signed copyright assignment
+  per `docs/cla.md` (the acceptance comment from the contributor's account)
+  before merge — a reviewer checks it alongside the test gate.
 - Testing gate: `check` (plus the relevant smoke) before opening the PR.
 - Merging is the maintainer's call; open the PR and stop.
 - Stage explicit paths; never `git add -A`, never force-push, never rewrite
