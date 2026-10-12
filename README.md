@@ -23,6 +23,7 @@ fleet. The `apiary` CLI runs them; the web client manages the fleet.
 ├── packages/pi-manager/  # agent lifecycle: scaffold, read, update, archive, delete
 ├── packages/auth/        # provider login sessions over pi's ModelRuntime
 ├── packages/web/         # browser client served by the bridge
+├── LICENSE               # Elastic License 2.0 (source-available)
 ├── docs/                 # product, architecture, agents, deployment
 ├── deploy/               # service container: Dockerfile, build and run scripts
 ├── devenv.nix            # dev shell: node + bun, extractors, one command per task
@@ -168,3 +169,14 @@ one-time job per checkout:
 Run `check` before opening a PR. `main` is protected: branch per feature (or
 a short-lived fix branch) off `main`, push, and open the pull request on
 GitHub.
+
+## License
+
+[Elastic License 2.0](LICENSE) (`Elastic-2.0`). Use, copy, modify and
+distribute freely — including internal and commercial use — except offering
+the software to third parties as a hosted or managed service. The `pi/`
+submodule keeps the license of our pi fork (MIT).
+
+Outside contributions must be accompanied by the copyright assignment in
+[`docs/cla.md`](docs/cla.md), so the project's copyright stays in one hand
+and relicensing stays clean.
