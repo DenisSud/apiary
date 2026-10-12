@@ -2,6 +2,7 @@
   "name": "@apiary/connector",
   "version": "0.0.0",
   "private": true,
+  "license": "Elastic-2.0",
   "type": "module",
   "description": "Bot registry and session policy shared by the TUI and web clients",
   "main": "./src/index.ts",

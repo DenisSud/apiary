@@ -2,6 +2,7 @@
   "name": "@apiary/pi-manager",
   "version": "0.0.0",
   "private": true,
+  "license": "Elastic-2.0",
   "type": "module",
   "description": "Bot lifecycle: scaffold, read, update, archive and delete agent dirs",
   "main": "./src/index.ts",
