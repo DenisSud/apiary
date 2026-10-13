@@ -73,7 +73,7 @@ agent dirs and the local rules overlay — not in the base.
 |---|---|
 | `base/` | the pi package floor every agent loads — empty for now (no extensions, no skills) |
 | `registry/` | `$APIARY_REGISTRY_DIR`: where an installable agent package would live — empty for now |
-| `LICENSE` | Elastic License 2.0 (`Elastic-2.0`): anything allowed except offering the software as a hosted or managed service to third parties |
+| `LICENSE` | MIT (`MIT`): permissive — anything allowed while the copyright and permission notice stays |
 | `pi/` | submodule: our `earendil-works/pi` fork — the experimental server/client stack and the service patches |
 | `packages/pi-manager/` | bot lifecycle: scaffold, read, update, archive, delete; reconciler and admin settings |
 | `packages/connector/` | bot registry, launcher, bridge — `apiary`, `apiary-web` (`bin/`) |

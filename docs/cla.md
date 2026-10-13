@@ -1,10 +1,10 @@
 # Contributor copyright assignment
 
-The project's position depends on a single copyright: the Elastic License 2.0
-is granted by one licensor, and any future relicensing or commercial
-licensing is only clean if the licensor owns (or holds equivalent rights to)
-the whole work. Copyright on code arises automatically in its author, so
-every outside contribution must be assigned before it is merged.
+The project's position depends on a single copyright: the MIT license is
+granted by one licensor, and any future relicensing or dual licensing is
+only clean if the licensor owns (or holds equivalent rights to) the whole
+work. Copyright on code arises automatically in its author, so every
+outside contribution must be assigned before it is merged.
 
 This applies to every PR from a repo account other than the maintainer's.
 No merge without it.
