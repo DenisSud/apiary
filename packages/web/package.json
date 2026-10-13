@@ -2,7 +2,7 @@
   "name": "@apiary/web",
   "version": "0.0.0",
   "private": true,
-  "license": "Elastic-2.0",
+  "license": "MIT",
   "type": "module",
   "description": "Browser client for the connector bridge",
   "scripts": {

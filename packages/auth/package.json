@@ -2,7 +2,7 @@
   "name": "@apiary/auth",
   "version": "0.0.0",
   "private": true,
-  "license": "Elastic-2.0",
+  "license": "MIT",
   "type": "module",
   "description": "Provider login sessions over pi's ModelRuntime",
   "main": "./src/index.ts",
