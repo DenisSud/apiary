@@ -103,8 +103,7 @@ agent dirs and the local rules overlay — not in the base.
   terminal (upstream Chrome DevTools skill; NixOS setup in its `references/local.md`).
 - GitHub `DenisSud/apiary` issues — the service backlog; labels `pkg:*`,
   `area:*`, `research`, `ready-for-agent`; milestones `durable integration`,
-  `v0`, `v0-alpha`, `v0-beta`, `v1`. Pre-2026-10-08 history (old numbering)
-  stays in the frozen Forgejo archive at `git.sudakov.site/DenisSud/pi-bots`.
+  `v0`, `v0-alpha`, `v0-beta`, `v1`.
 
 ## The pi source monorepo
 
